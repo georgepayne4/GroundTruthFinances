@@ -714,3 +714,508 @@ One commit per batch (or per task if large). Single-line commit messages:
 Add pension tax, windfall events, self-employment support
 Add investment fee modelling, time-horizon allocation, glide path
 ```
+
+---
+---
+
+# v4 — Next Improvements: Premium Wealth Management Parity
+
+The v3 engine covers the core analysis well. The improvements below target the gap between "good DIY snapshot tool" and "what a top-tier wealth manager (St. James's Place, Investec, Vanguard Personal Advisor) would deliver." Organised into three tiers by impact.
+
+## Current Strengths (no changes needed)
+
+- Tax calculations (income tax bands, NI, personal allowance taper at £100k)
+- Debt strategy (avalanche, student loan income-contingent repayment, write-off modelling)
+- Mortgage math (LTV tiers, stamp duty, product comparison, overpayment, shared ownership)
+- Pension adequacy (state pension, employer match, tax on withdrawal, annuity vs drawdown)
+- Fee drag analysis (blended fees, low-cost vs high-cost comparison)
+- Estate/IHT modelling (nil-rate bands, will/LPA gaps)
+- Pipeline architecture (modular, configuration-driven, validated)
+
+## Current Weaknesses Summary
+
+| Dimension | Current | Top-Tier Target | Gap |
+|-----------|---------|-----------------|-----|
+| Cross-module integration | 5/10 | 10/10 | Modules run in isolation; no prerequisite checks, no feedback loops |
+| Tax planning actionability | 5/10 | 9/10 | Flags opportunities but never quantifies £ impact |
+| Scenario depth | 6/10 | 9/10 | Tests bad luck only; no user-choice sensitivity analysis |
+| Household planning | 0/10 | 9/10 | Single-person only; no partner/joint analysis |
+| Recommendation specificity | 4/10 | 9/10 | "Get insurance" vs "£400k term life costs ~£30/month" |
+| Life simulation accuracy | 5/10 | 8/10 | Hardcoded splits, crude debt reduction, no milestones |
+| Tax coverage | 6/10 | 9/10 | Income tax + NI only; no CGT, dividend tax, or savings interest |
+| Report quality | 4/10 | 9/10 | Data dump; not a narrative financial plan |
+| Goal intelligence | 5/10 | 9/10 | No prerequisite logic, no opportunity cost ranking |
+| Regulatory awareness | 3/10 | 8/10 | No trust structures, probate costs, or policy-linked limits |
+
+---
+
+## TIER 1 — Transforms the Quality of Advice
+
+### T1-1: Cross-module integration layer
+
+**Problem:** Each module runs independently. Real advisors think holistically — goals depend on emergency fund adequacy, mortgage affordability changes after life events, insurance needs scale with pension gaps, student loans near write-off shouldn't reduce borrowing capacity.
+
+**Current gaps:**
+- Goals module allocates surplus without checking if emergency fund is adequate first
+- Mortgage affordability isn't re-tested after life events (child, pay cut)
+- Insurance recommendations don't scale with pension inadequacy
+- Student loans near write-off are penalised at full DTI weight in mortgage calculations
+- Life events use hardcoded rates (60/40 surplus split, 70% debt principal, stress_rate - 0.02) instead of assumptions from the actual modules
+
+**Implementation:**
+1. Add goal prerequisite logic in `goals.py`:
+   - Define prerequisites: emergency fund (3 months) → debt payoff (high-interest) → other goals
+   - Goals with unmet prerequisites are automatically "blocked" with explanation
+   - Surplus allocation respects prerequisite order
+2. In `life_events.py`, after each major event (child, home purchase, pay change):
+   - Re-run affordability check from `mortgage.py` logic
+   - Flag year where post-event surplus goes negative or below safety threshold
+   - Add milestone warnings to timeline: "Year 3: post-purchase surplus drops to £180/month — tight"
+3. In `insurance.py`, cross-reference pension adequacy:
+   - If replacement ratio < 50%, increase life insurance recommendation multiplier
+   - If no income protection and pension inadequate, flag as "critical" not "moderate"
+4. In `mortgage.py`, adjust student loan DTI treatment:
+   - Loans within 10 years of write-off: weight at 50% in DTI calculation
+   - Loans within 5 years of write-off: weight at 25%
+   - Add note: "Student loan payments reduce after write-off; effective DTI will improve"
+5. In `life_events.py`, replace hardcoded values with assumptions:
+   - Surplus allocation split → `assumptions.yaml`
+   - Debt reduction principal fraction → `assumptions.yaml`
+   - Mortgage rate → use product rate from mortgage module output
+
+**Files:** `engine/goals.py`, `engine/life_events.py`, `engine/insurance.py`, `engine/mortgage.py`, `config/assumptions.yaml`
+
+---
+
+### T1-2: £-quantified tax optimisation
+
+**Problem:** Insights say "you're leaving money on the table" or "consider salary sacrifice." A real advisor says "contributing an extra £177/month to your pension saves you £708/year in tax and captures £2,130 in employer match — net cost to you is £1,422/year for £2,838 total benefit."
+
+**Implementation:**
+1. In `investments.py`, expand `pension_match_optimisation`:
+   - Calculate exact additional personal contribution needed to max employer match
+   - Calculate gross cost, tax relief, and net cost to take-home pay
+   - Calculate total annual benefit (employer match + tax relief)
+   - Show ROI: "Every £1 you contribute returns £X.XX"
+2. In `cashflow.py`, add salary sacrifice modelling:
+   - If personal pension contribution made via salary sacrifice:
+     - Save employer NI (13.8%) — some employers pass this saving through
+     - Save employee NI (8%) on the sacrificed amount
+     - Show total tax + NI saving vs. net pay reduction
+   - Compare: salary sacrifice vs. relief at source
+3. In `insights.py`, for every tax recommendation, include:
+   - `annual_saving_gbp`: exact £ saved per year
+   - `monthly_cost_to_takehome`: what it costs in reduced take-home pay
+   - `roi_pct`: return on the "investment" of reduced take-home
+4. Childcare relief: quantify government top-up in £ terms, not just percentage
+5. ISA vs pension: "£1,000 into pension costs you £600 after basic rate relief (£500 if higher rate). £1,000 into ISA costs £1,000. But pension is locked until 57."
+
+**Files:** `engine/investments.py`, `engine/cashflow.py`, `engine/insights.py`
+
+---
+
+### T1-3: Surplus optimisation engine
+
+**Problem:** The engine identifies surplus but doesn't rank competing uses by return. A top advisor would say: "Here's the optimal order for your next £1."
+
+**Implementation:**
+1. New function `_rank_surplus_deployment` in `insights.py` or new `engine/optimiser.py`:
+   - For each possible use of surplus, calculate effective annual return:
+     - **Pay off 22.9% APR credit card** → 22.9% guaranteed return
+     - **Employer pension match (unmatched portion)** → 100%+ return (employer match + tax relief)
+     - **Build emergency fund to 3 months** → risk reduction (not quantifiable in %, but flag as priority)
+     - **Pay off 6.3% personal loan** → 6.3% guaranteed return
+     - **ISA contribution** → ~6% expected return, tax-free
+     - **Pension (beyond match)** → ~6% expected + 20-40% tax relief = ~7-8% effective
+     - **Student loan overpayment** → often negative ROI if near write-off
+     - **Mortgage overpayment** → saves mortgage rate (e.g. 4.8%)
+   - Rank by effective return, highest first
+   - Show allocation: "Direct £200/month to credit card (clears in X months), then redirect to pension match (£177/month), then ISA (remainder)"
+2. Add `surplus_deployment_plan` section to report with ordered steps, £ amounts, and projected timeline
+3. In insights, replace generic "prioritise debt" with the specific ranked plan
+
+**Files:** `engine/insights.py` or new `engine/optimiser.py`, `engine/report.py`
+
+---
+
+### T1-4: User-choice sensitivity analysis
+
+**Problem:** Stress scenarios test adverse conditions (job loss, rate shock) but not user decisions. "What if I buy at £400k instead of £450k?" is exactly the kind of question a premium advisor answers.
+
+**Implementation:**
+1. New module `engine/sensitivity.py`:
+   - Accept a list of "what-if" parameter overrides
+   - Re-run relevant modules with modified inputs
+   - Compare outcomes to baseline
+2. Built-in sensitivity scenarios:
+   - **Property price**: test at -10%, -20%, +10% of target
+   - **Retirement age**: test at -2, +2, +5 years from planned
+   - **Savings rate**: test at +5%, +10% of net income
+   - **Pension contribution**: test at max employer match, max annual allowance
+   - **Mortgage term**: test 25 vs 30 vs 35 years
+   - **Mortgage product**: compare total cost of 2-year fix vs 5-year fix over 10 years
+3. Output format: table showing baseline vs each scenario for key metrics (surplus, goal feasibility, pension adequacy, mortgage affordability, net worth at retirement)
+4. Add to report as `sensitivity_analysis` section
+5. Wire into `main.py` pipeline after scenarios
+
+**Files:** New `engine/sensitivity.py`, `engine/report.py`, `main.py`
+
+---
+
+### T1-5: Student loan write-off intelligence
+
+**Problem:** Debt analysis treats student loans like normal debt. In reality, Plan 2 loans write off after 30 years, and aggressively repaying a loan you'll never clear is burning money. Mortgage DTI also over-penalises student loan payments.
+
+**Implementation:**
+1. In `debt.py`, enhance student loan analysis:
+   - Project total amount repaid over loan lifetime (income-contingent payments × years to write-off)
+   - Compare to balance: if total repaid < balance, loan will be written off — flag "do NOT overpay"
+   - Calculate "break-even salary": the salary at which you'd actually clear the loan before write-off
+   - For loans where write-off saves money: recommend minimum payments only, redirect surplus elsewhere
+2. In `insights.py`, replace generic "pay off debt" with:
+   - "Your Plan 2 student loan will be written off in 24 years. At your current salary trajectory, you'll repay approximately £X of the £29.5k balance. Overpaying would waste money — direct surplus to higher-return uses instead."
+3. In `mortgage.py`, apply reduced DTI weight for student loans (see T1-1 point 4)
+
+**Files:** `engine/debt.py`, `engine/insights.py`, `engine/mortgage.py`
+
+---
+
+## TIER 2 — Closes Key Gaps with Premium Services
+
+### T2-1: Partner / household mode
+
+**Problem:** Currently single-person only. Real wealth management handles dual incomes, income splitting, spousal pension contributions, joint mortgage affordability, survivor financial security, and coordinated ISA/pension usage.
+
+**Implementation:**
+1. Extend profile schema to support optional `partner` section:
+   ```yaml
+   partner:
+     name: "Partner Name"
+     age: 28
+     employment_type: employed
+     gross_salary: 45000
+     pension_contribution_pct: 5
+     employer_pension_pct: 3
+     savings:
+       isa_balance: 8000
+       pension_balance: 15000
+     debts: [...]
+   ```
+2. In `cashflow.py`: calculate household income (both salaries), household expenses, household surplus
+3. In `mortgage.py`: joint application borrowing capacity (combined income × multiplier, combined DTI)
+4. In `investments.py`: coordinate pension strategies (if one partner has employer match, prioritise that)
+5. In `estate.py`: model spousal exemption properly (unlimited IHT exemption on first death, combined nil-rate bands on second death)
+6. In `insurance.py`: model survivor's financial security (if partner dies, can survivor cover mortgage + expenses on single income?)
+7. In `cashflow.py` or new `engine/tax_planning.py`: marriage allowance transfer (£1,260 transferable if one partner earns < personal allowance)
+8. Add household-level scoring alongside individual scores
+
+**Files:** Profile schema, `engine/cashflow.py`, `engine/mortgage.py`, `engine/investments.py`, `engine/estate.py`, `engine/insurance.py`, `engine/scoring.py`
+
+---
+
+### T2-2: Capital gains tax and dividend tax
+
+**Problem:** The tax module handles income tax and NI but completely ignores CGT and dividend tax. These matter for property sales, taxable investment accounts, and GIA holdings.
+
+**Implementation:**
+1. In `engine/tax.py`, add:
+   - `calculate_capital_gains_tax(gain, annual_exemption, income_level)`:
+     - Annual CGT exemption (£3,000 for 2024/25)
+     - Basic rate: 10% (18% for property)
+     - Higher rate: 20% (24% for property)
+   - `calculate_dividend_tax(dividends, income_level)`:
+     - Dividend allowance (£500 for 2024/25)
+     - Basic rate: 8.75%
+     - Higher rate: 33.75%
+     - Additional rate: 39.35%
+2. Add CGT/dividend thresholds to `assumptions.yaml`
+3. In `investments.py`:
+   - For taxable accounts (GIA), model dividend tax drag on returns
+   - For property sale scenarios, calculate CGT liability
+   - Show tax advantage of ISA/pension vs GIA in £ terms
+4. In `estate.py`: property sale CGT if downsizing to release equity
+5. In `insights.py`: "Your GIA holdings generate taxable dividends. Moving £X to your ISA saves £Y in annual dividend tax."
+
+**Files:** `engine/tax.py`, `config/assumptions.yaml`, `engine/investments.py`, `engine/estate.py`, `engine/insights.py`
+
+---
+
+### T2-3: Cost-benefit on every recommendation
+
+**Problem:** "Get life insurance" vs "You need £400k decreasing term life cover; at age 26 this costs roughly £15-25/month and protects your dependents for 25 years until your mortgage is cleared."
+
+**Implementation:**
+1. Add estimated cost ranges to `assumptions.yaml`:
+   ```yaml
+   insurance_cost_estimates:
+     term_life_per_100k:
+       age_25_30: { monthly_low: 5, monthly_high: 8 }
+       age_30_40: { monthly_low: 8, monthly_high: 15 }
+       age_40_50: { monthly_low: 15, monthly_high: 30 }
+     income_protection_pct_of_benefit: 0.04  # ~4% of annual benefit
+     critical_illness_per_100k:
+       age_25_30: { monthly_low: 15, monthly_high: 25 }
+   ```
+2. In `insurance.py`, for each gap:
+   - Calculate estimated monthly cost based on age and cover amount
+   - Calculate cost as % of surplus
+   - Show break-even: "This costs £30/month but protects £400k of liability"
+3. In `insights.py`, for every recommendation:
+   - Add `estimated_cost` field (monthly or one-off)
+   - Add `estimated_benefit` field (£ saved, risk reduced, or return gained)
+   - Add `cost_as_pct_of_surplus`: "This recommendation costs X% of your monthly surplus"
+4. Extend to non-insurance recommendations:
+   - Will + LPA: "A basic will costs £150-300; a mirror will for couples £250-400"
+   - Financial advice: "An initial IFA consultation costs £500-1,500"
+   - Pension review: "A pension transfer analysis costs £500-1,000"
+
+**Files:** `engine/insurance.py`, `engine/insights.py`, `config/assumptions.yaml`
+
+---
+
+### T2-4: Enhanced life simulation
+
+**Problem:** Life simulation uses crude assumptions (60/40 surplus split, 70% debt principal, no year-by-year breakdown). Children aren't aged. No milestones or early warnings.
+
+**Implementation:**
+1. In `life_events.py`, replace hardcoded values with assumptions.yaml entries:
+   - `surplus_allocation_liquid_pct: 0.60`
+   - `surplus_allocation_investment_pct: 0.40`
+   - `debt_principal_fraction: 0.70`
+2. Add year-by-year cashflow breakdown to timeline entries:
+   - `gross_income`, `tax_and_ni`, `net_income`, `expenses_by_category`, `debt_payments`, `savings_contributions`, `surplus`
+   - `savings_rate_pct` per year
+   - `debt_remaining` per year
+3. Child ageing model:
+   - Track each child's age year by year
+   - Childcare costs: ages 0-3 (nursery, expensive), 3-4 (30 free hours, reduced cost), 5-11 (after-school only), 11+ (minimal)
+   - Add school-age cost assumptions to `assumptions.yaml`
+   - University costs at age 18 (optional goal integration)
+4. Milestone detection:
+   - "Year 2: emergency fund target reached"
+   - "Year 3: net worth dips below target — investigate"
+   - "Year 5: debt-free (excluding student loans)"
+   - "Year 7: inheritance boosts net worth by £50k"
+   - Flag any year where surplus goes negative
+5. Add `milestones` list to life events output
+
+**Files:** `engine/life_events.py`, `config/assumptions.yaml`
+
+---
+
+### T2-5: Move all hardcoded values to assumptions.yaml
+
+**Problem:** ~30 values are buried in Python code instead of being configurable. This makes the engine brittle to policy changes and impossible for users to tune.
+
+**Values to extract:**
+
+| Module | Value | Current |
+|--------|-------|---------|
+| cashflow.py | Class 2 NI weekly rate | `3.45` |
+| debt.py | Extra payment scenarios | `[100, 200, 500]` |
+| debt.py | Max simulation months | `600` |
+| goals.py | LISA annual limit | `4000` |
+| goals.py | LISA bonus rate | `0.25` |
+| goals.py | LISA property price limit | `450000` |
+| goals.py | LISA age limit | `40` |
+| investments.py | Safe withdrawal rate | `0.04` |
+| investments.py | Tax-free lump sum fraction | `0.25` |
+| investments.py | Default expected return | `0.06` |
+| investments.py | Retirement income target | `30000` |
+| mortgage.py | DTI adjustment cap | `0.20` |
+| mortgage.py | Overpayment annual limit | `0.10` |
+| mortgage.py | First-time buyer threshold | `625000` |
+| life_events.py | Surplus allocation split | `0.60 / 0.40` |
+| life_events.py | Debt principal fraction | `0.70` |
+| life_events.py | Mortgage rate offset | `stress_rate - 0.02` |
+| insurance.py | Life insurance multiplier | `10` (dependents), `5` (mortgage) |
+| insurance.py | Income protection ratio | `0.60` |
+| insurance.py | Critical illness months | `24` |
+| scenarios.py | Job loss months | `[3, 6, 12]` |
+| scenarios.py | Rate shock bumps | `[1, 2, 3]` |
+| scenarios.py | Market drop pcts | `[10, 20, 30]` |
+| scenarios.py | Inflation shock pcts | `[5, 8, 10]` |
+| scenarios.py | Income cut pcts | `[10, 20, 30]` |
+| estate.py | IHT nil-rate band | `325000` |
+| estate.py | IHT residence nil-rate | `175000` |
+| estate.py | IHT rate | `0.40` |
+| scoring.py | Category weights | sum to 110% (bug) |
+
+**Implementation:**
+1. Add all values to `assumptions.yaml` under appropriate sections
+2. Update each module to read from assumptions dict
+3. Fix scoring weights to sum to 100%
+
+**Files:** `config/assumptions.yaml`, all engine modules
+
+---
+
+## TIER 3 — Polish and Differentiation
+
+### T3-1: Narrative report generation
+
+**Problem:** The report is a JSON data dump. A premium advisor delivers a narrative document with clear priority actions, visual timeline, decision points, and progress tracking.
+
+**Implementation:**
+1. New module `engine/narrative.py`:
+   - Generate structured text report from JSON data
+   - Sections: Executive Summary → Financial Snapshot → Priority Actions (with £ impact and deadlines) → Detailed Analysis → Timeline & Milestones → Decision Points → Appendix (assumptions, methodology)
+2. Each priority action includes:
+   - What to do (specific action)
+   - Why (£ impact or risk reduction)
+   - When (deadline or "immediately")
+   - How (step-by-step if non-obvious)
+3. Decision points section:
+   - "In 2028, your 5-year fix ends — start comparing remortgage products 3 months before"
+   - "At age 30, review pension allocation — current 90% equity is aggressive"
+   - "When credit cards are cleared (~Month 4), redirect £200/month to emergency fund"
+4. Add text report output alongside JSON (Markdown or plain text)
+5. Add `--format` flag to `main.py`: `json` (default), `text`, `both`
+
+**Files:** New `engine/narrative.py`, `main.py`
+
+---
+
+### T3-2: Goal sequencing with prerequisite logic
+
+**Problem:** Goals are prioritised by a simple high/medium/low field. No awareness that emergency fund must come before property deposit, or that high-interest debt clearance is a prerequisite for everything.
+
+**Implementation:**
+1. Define prerequisite rules in `assumptions.yaml`:
+   ```yaml
+   goal_prerequisites:
+     - condition: emergency_fund_months < 3
+       blocks: [property, investment, travel]
+       message: "Build emergency fund to 3 months before pursuing discretionary goals"
+     - condition: high_interest_debt > 0
+       blocks: [property, investment, travel]
+       message: "Clear high-interest debt before long-term savings"
+   ```
+2. In `goals.py`, check prerequisites before allocating surplus:
+   - If emergency fund < 3 months: all surplus goes to emergency fund
+   - If high-interest debt exists: surplus goes to debt payoff after emergency fund
+   - Only after prerequisites met: allocate to user-defined goals
+3. Add `blocked_by` field to each goal analysis with explanation
+4. Update insights to explain the sequencing logic
+
+**Files:** `engine/goals.py`, `config/assumptions.yaml`, `engine/insights.py`
+
+---
+
+### T3-3: Rebalancing triggers and drift monitoring
+
+**Problem:** The engine suggests a target allocation but doesn't detect when the current portfolio has drifted from target or when rebalancing is needed.
+
+**Implementation:**
+1. Add current allocation to profile savings:
+   ```yaml
+   current_allocation:
+     equities_pct: 0.85
+     bonds_pct: 0.05
+     property_pct: 0.00
+     cash_pct: 0.10
+   ```
+2. In `investments.py`:
+   - Compare current vs target allocation (from risk profile)
+   - Flag drift > 5% in any asset class
+   - Calculate rebalancing trades needed (£ to sell/buy per class)
+   - Note tax implications: rebalancing within ISA/pension is free; GIA triggers CGT
+3. Add rebalancing recommendation to insights with specific £ amounts
+
+**Files:** `engine/investments.py`, `engine/insights.py`, profile schema
+
+---
+
+### T3-4: Spending trend analysis and behavioural nudges
+
+**Problem:** Expenses are a single snapshot. No identification of where spending is unusually high relative to peers, or which category offers the most savings potential.
+
+**Implementation:**
+1. Enhance `cashflow.py` spending benchmark analysis:
+   - Rank expense categories by "over-benchmark" amount (largest overspend first)
+   - For top 3 overspend categories, calculate: "Reducing to benchmark saves £X/month (£Y/year)"
+   - Show cumulative: "Reducing top 3 categories to benchmark frees £Z/month — enough to [specific goal impact]"
+2. Add behavioural nudges to insights:
+   - "Your transport costs are 18% of net income vs 12% UK average. Could you cycle, use public transport, or carpool?"
+   - "Your discretionary spending is £X above benchmark. A 10% reduction funds your emergency fund in Y months."
+3. Link savings to specific goals: "Cutting dining out by £100/month closes your property deposit gap 6 months sooner"
+
+**Files:** `engine/cashflow.py`, `engine/insights.py`
+
+---
+
+### T3-5: Regulatory and policy-linked limits
+
+**Problem:** Tax bands, ISA limits, LISA rules, stamp duty thresholds, and NI rates change annually. Currently these are partially in assumptions.yaml and partially hardcoded, with no indication of which tax year they apply to.
+
+**Implementation:**
+1. Add `tax_year` field to `assumptions.yaml` header:
+   ```yaml
+   tax_year: "2025/26"
+   effective_from: "2025-04-06"
+   ```
+2. Group all tax-year-sensitive values under a `tax_year_limits` section:
+   ```yaml
+   tax_year_limits:
+     personal_allowance: 12570
+     basic_rate_threshold: 50270
+     higher_rate_threshold: 125140
+     isa_annual_limit: 20000
+     lisa_annual_limit: 4000
+     lisa_property_limit: 450000
+     lisa_age_limit: 40
+     pension_annual_allowance: 60000
+     pension_lifetime_allowance: null  # abolished 2024
+     cgt_annual_exemption: 3000
+     dividend_allowance: 500
+     ni_primary_threshold: 12570
+     stamp_duty_first_time_buyer_threshold: 625000
+   ```
+3. In `main.py` or `validator.py`, warn if `tax_year` doesn't match current date:
+   - "Assumptions are based on 2025/26 tax year. Current date suggests 2026/27 — consider updating."
+4. Move all remaining hardcoded limits from engine modules to this section
+
+**Files:** `config/assumptions.yaml`, engine modules that reference limits, `engine/validator.py`
+
+---
+
+## IMPLEMENTATION ORDER
+
+### Wave 1 — Tier 1 (highest impact)
+1. **T1-1** Cross-module integration layer
+2. **T1-2** £-quantified tax optimisation
+3. **T1-3** Surplus optimisation engine
+4. **T1-4** User-choice sensitivity analysis
+5. **T1-5** Student loan write-off intelligence
+
+### Wave 2 — Tier 2 (key gaps)
+6. **T2-1** Partner / household mode
+7. **T2-2** Capital gains tax and dividend tax
+8. **T2-3** Cost-benefit on every recommendation
+9. **T2-4** Enhanced life simulation
+10. **T2-5** Move all hardcoded values to assumptions.yaml
+
+### Wave 3 — Tier 3 (polish)
+11. **T3-1** Narrative report generation
+12. **T3-2** Goal sequencing with prerequisite logic
+13. **T3-3** Rebalancing triggers and drift monitoring
+14. **T3-4** Spending trend analysis and behavioural nudges
+15. **T3-5** Regulatory and policy-linked limits
+
+---
+
+## TESTING
+
+After each wave, run both profiles:
+```bash
+python main.py                                    # sample_input
+python main.py --profile config/george_input.yaml  # george_input
+```
+
+Verify:
+- No Python errors
+- New sections appear in report.json
+- Cross-module data flows correctly (e.g. goal prerequisites block correctly)
+- Sensitivity analysis produces meaningful comparisons
+- Console output reflects new analysis steps
+- Scoring weights sum to 100% after T2-5
