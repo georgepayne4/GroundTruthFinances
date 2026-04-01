@@ -1,0 +1,63 @@
+# ==============================================================================
+# Financial Planning Assumptions
+# These defaults are used when the user does not provide overrides.
+# Sources: historical averages, UK/US financial planning norms.
+# ==============================================================================
+
+inflation:
+  general: 0.03          # 3% general inflation
+  education: 0.05        # 5% education cost inflation
+  healthcare: 0.06       # 6% healthcare cost inflation
+  housing: 0.04          # 4% housing price growth
+
+investment_returns:
+  conservative: 0.04     # bonds / cash-heavy
+  moderate: 0.06         # balanced equity-bond
+  aggressive: 0.08       # equity-heavy
+  very_aggressive: 0.10  # concentrated equity / alternatives
+
+salary_growth:
+  low: 0.02
+  average: 0.035
+  high: 0.05
+
+tax:
+  # Simplified marginal brackets (UK-style for illustration)
+  personal_allowance: 12570
+  basic_rate: 0.20
+  basic_threshold: 50270
+  higher_rate: 0.40
+  higher_threshold: 125140
+  additional_rate: 0.45
+  national_insurance_rate: 0.08   # employee NI above threshold
+
+mortgage:
+  income_multiple_single: 4.5
+  income_multiple_joint: 4.0
+  min_deposit_pct: 0.05
+  comfortable_deposit_pct: 0.10
+  ideal_deposit_pct: 0.20
+  stress_test_rate: 0.07          # lenders stress-test at higher rate
+  max_dti_ratio: 0.45             # max debt-to-income ratio
+  typical_term_years: 25
+
+debt:
+  emergency_fund_months: 3        # minimum recommended
+  ideal_emergency_fund_months: 6
+  high_interest_threshold: 0.10   # above this = high interest
+  moderate_interest_threshold: 0.05
+
+scoring:
+  weights:
+    savings_rate: 0.20
+    debt_health: 0.20
+    emergency_fund: 0.15
+    net_worth_trend: 0.10
+    goal_progress: 0.15
+    investment_diversification: 0.10
+    mortgage_readiness: 0.10
+
+life_events:
+  default_projection_years: 10
+  retirement_age: 67
+  life_expectancy: 85
