@@ -2,14 +2,20 @@
 life_events.py — Life Event Simulation Engine
 
 Projects financial trajectory over time by applying income changes,
-one-off expenses, recurring expense changes, investment growth, and
-salary growth.  Produces a year-by-year timeline showing net worth,
-surplus, and goal feasibility at each point.
+one-off expenses/incomes, recurring expense changes, investment growth,
+salary growth, childcare tax relief, and equity growth projection.
+
+Supports:
+- FA-3: Childcare Tax-Free Childcare top-up
+- FA-4: Windfall/inheritance one_off_income events
+- MA-4: Property equity growth tracking
 """
 
 from __future__ import annotations
 
 from typing import Any
+
+from engine.mortgage import _monthly_repayment
 
 
 def simulate_life_events(
@@ -19,14 +25,6 @@ def simulate_life_events(
 ) -> dict[str, Any]:
     """
     Run a year-by-year simulation of the user's financial trajectory.
-
-    Each year:
-    1. Apply salary growth
-    2. Apply any life events (income changes, one-off costs, recurring cost changes)
-    3. Recalculate surplus
-    4. Grow investments at expected return
-    5. Pay down debt
-    6. Track net worth and goal progress
     """
     events = profile.get("life_events", [])
     personal = profile.get("personal", {})
@@ -39,20 +37,29 @@ def simulate_life_events(
                                   assumptions.get("life_events", {}).get("retirement_age", 67))
     projection_years = assumptions.get("life_events", {}).get("default_projection_years", 10)
 
-    # Use the longer of default projection or latest life event
     if events:
         max_event_year = max(e.get("year_offset", 0) for e in events)
         projection_years = max(projection_years, max_event_year + 2)
 
-    # Cap at years to retirement
     projection_years = min(projection_years, max(1, retirement_age - age))
 
     # Assumptions
     risk_profile = personal.get("risk_profile", "moderate")
     investment_return = assumptions.get("investment_returns", {}).get(risk_profile, 0.06)
     inflation = assumptions.get("inflation", {}).get("general", 0.03)
+    housing_growth = assumptions.get("inflation", {}).get("housing", 0.04)
     salary_growth_key = personal.get("salary_growth_outlook", "average")
     salary_growth = assumptions.get("salary_growth", {}).get(salary_growth_key, 0.035)
+
+    # Childcare config (FA-3)
+    childcare_cfg = assumptions.get("childcare", {})
+    tfc_pct = childcare_cfg.get("tax_free_childcare_pct", 0.20)
+    max_topup = childcare_cfg.get("max_government_topup_per_child", 2000)
+    dependents = personal.get("dependents", 0)
+
+    # Mortgage config for equity tracking (MA-4)
+    mort = profile.get("mortgage", {})
+    mort_cfg = assumptions.get("mortgage", {})
 
     # ------------------------------------------------------------------
     # Initial state
@@ -72,6 +79,15 @@ def simulate_life_events(
         tax_rate=_effective_tax_rate(cashflow),
     )
 
+    # Property tracking (MA-4)
+    property_value = 0.0
+    mortgage_balance = 0.0
+    mortgage_rate = 0.0
+    mortgage_term = 0
+    owns_property = False
+    num_children = dependents
+    childcare_savings_total = 0.0
+
     # Build event lookup by year offset
     event_map: dict[int, list[dict]] = {}
     for e in events:
@@ -87,8 +103,8 @@ def simulate_life_events(
     for year in range(0, projection_years + 1):
         year_events = event_map.get(year, [])
         event_descriptions = []
+        year_childcare_saving = 0.0
 
-        # Apply life events for this year
         for ev in year_events:
             desc = ev.get("description", "Unknown event")
             event_descriptions.append(desc)
@@ -102,14 +118,44 @@ def simulate_life_events(
             one_off = ev.get("one_off_expense", 0)
             state.liquid_savings -= one_off
 
+            # FA-4: One-off income / windfall (added to liquid savings)
+            one_off_income = ev.get("one_off_income", 0)
+            state.liquid_savings += one_off_income
+
             # Recurring monthly expense change (permanent)
             monthly_change = ev.get("monthly_expense_change", 0)
-            state.expenses_annual += monthly_change * 12
+
+            # FA-3: Apply childcare tax relief
+            ev_type = ev.get("type", "")
+            if ev_type == "childcare" and monthly_change > 0:
+                annual_childcare = monthly_change * 12
+                # Count children (track from "First child" events)
+                children_for_relief = max(1, num_children)
+                gov_topup = min(annual_childcare * tfc_pct, max_topup * children_for_relief)
+                effective_annual = annual_childcare - gov_topup
+                year_childcare_saving = gov_topup
+                childcare_savings_total += gov_topup
+                state.expenses_annual += effective_annual
+            else:
+                state.expenses_annual += monthly_change * 12
+
+            # Track child events for dependents count
+            if "child" in desc.lower() and "childcare" not in desc.lower():
+                num_children += 1
+
+            # MA-4: Track property purchase
+            if "home" in desc.lower() or "property" in desc.lower() or "purchase" in desc.lower():
+                if mort:
+                    property_value = mort.get("target_property_value", 0)
+                    deposit_pct = mort.get("preferred_deposit_pct", 0.15)
+                    mortgage_balance = property_value * (1 - deposit_pct)
+                    mortgage_rate = assumptions.get("mortgage", {}).get("stress_test_rate", 0.07) - 0.02
+                    mortgage_term = mort.get("preferred_term_years", 25)
+                    owns_property = True
 
         # Apply salary growth (compounding, skip year 0)
         if year > 0:
             state.gross_annual *= (1 + salary_growth)
-            # Inflate expenses
             state.expenses_annual *= (1 + inflation)
 
         # Calculate net income for this year
@@ -118,13 +164,11 @@ def simulate_life_events(
         total_outgoings = state.expenses_annual + state.debt_payments_annual
         annual_surplus = net_income - total_outgoings
 
-        # Allocate surplus: positive → savings/investments, negative → drawdown
+        # Allocate surplus
         if annual_surplus > 0:
-            # Split: 60% to liquid savings, 40% to investments
             state.liquid_savings += annual_surplus * 0.6
             state.investments += annual_surplus * 0.4
         else:
-            # Draw down liquid savings first
             drawdown = abs(annual_surplus)
             if state.liquid_savings >= drawdown:
                 state.liquid_savings -= drawdown
@@ -136,15 +180,27 @@ def simulate_life_events(
         # Grow investments
         state.investments *= (1 + investment_return)
 
-        # Reduce debt (simplified: assume minimum payments reduce balance)
+        # Reduce debt
         if state.total_debt > 0:
             debt_reduction = min(state.debt_payments_annual, state.total_debt)
-            state.total_debt = max(0, state.total_debt - debt_reduction * 0.7)  # ~30% goes to interest
+            state.total_debt = max(0, state.total_debt - debt_reduction * 0.7)
+
+        # MA-4: Property equity tracking
+        equity = 0.0
+        if owns_property and property_value > 0:
+            property_value *= (1 + housing_growth)
+            if mortgage_balance > 0 and mortgage_rate > 0 and mortgage_term > 0:
+                monthly_payment = _monthly_repayment(mortgage_balance, mortgage_rate, mortgage_term)
+                annual_payment = monthly_payment * 12
+                annual_interest = mortgage_balance * mortgage_rate
+                principal_paid = max(0, annual_payment - annual_interest)
+                mortgage_balance = max(0, mortgage_balance - principal_paid)
+            equity = property_value - mortgage_balance
 
         # Net worth
-        net_worth = state.liquid_savings + state.investments - state.total_debt
+        net_worth = state.liquid_savings + state.investments - state.total_debt + equity
 
-        timeline.append({
+        entry = {
             "year": year,
             "age": age + year,
             "events": event_descriptions if event_descriptions else None,
@@ -157,7 +213,17 @@ def simulate_life_events(
             "investments": round(state.investments, 2),
             "total_debt": round(state.total_debt, 2),
             "net_worth": round(net_worth, 2),
-        })
+        }
+
+        if owns_property:
+            entry["property_value"] = round(property_value, 2)
+            entry["mortgage_balance"] = round(mortgage_balance, 2)
+            entry["equity"] = round(equity, 2)
+
+        if year_childcare_saving > 0:
+            entry["childcare_tax_relief"] = round(year_childcare_saving, 2)
+
+        timeline.append(entry)
 
     # ------------------------------------------------------------------
     # Derive summary insights
@@ -167,7 +233,6 @@ def simulate_life_events(
     peak_nw = max(t["net_worth"] for t in timeline) if timeline else 0
     trough_nw = min(t["net_worth"] for t in timeline) if timeline else 0
 
-    # Find year when net worth first goes negative (if ever)
     negative_year = None
     for t in timeline:
         if t["net_worth"] < 0:
@@ -180,10 +245,8 @@ def simulate_life_events(
     for g in goals:
         deadline = g.get("deadline_years", 0)
         target = g.get("target_amount", 0)
-        # Find net worth at deadline year
         deadline_entry = next((t for t in timeline if t["year"] == deadline), None)
         if deadline_entry:
-            # Rough check: is liquid savings at that point enough?
             available = deadline_entry["liquid_savings"]
             feasible = available >= target
         else:
@@ -196,18 +259,23 @@ def simulate_life_events(
             "likely_feasible": feasible,
         })
 
+    summary = {
+        "starting_net_worth": round(first_nw, 2),
+        "ending_net_worth": round(last_nw, 2),
+        "peak_net_worth": round(peak_nw, 2),
+        "trough_net_worth": round(trough_nw, 2),
+        "net_worth_change": round(last_nw - first_nw, 2),
+        "first_negative_year": negative_year,
+        "cumulative_events": cumulative_events,
+    }
+
+    if childcare_savings_total > 0:
+        summary["total_childcare_tax_relief"] = round(childcare_savings_total, 2)
+
     return {
         "projection_years": projection_years,
         "timeline": timeline,
-        "summary": {
-            "starting_net_worth": round(first_nw, 2),
-            "ending_net_worth": round(last_nw, 2),
-            "peak_net_worth": round(peak_nw, 2),
-            "trough_net_worth": round(trough_nw, 2),
-            "net_worth_change": round(last_nw - first_nw, 2),
-            "first_negative_year": negative_year,
-            "cumulative_events": cumulative_events,
-        },
+        "summary": summary,
         "goal_feasibility_at_deadline": goal_feasibility,
     }
 
@@ -244,5 +312,5 @@ def _effective_tax_rate(cashflow: dict) -> float:
     gross = cashflow.get("income", {}).get("total_gross_annual", 0)
     deductions = cashflow.get("deductions", {}).get("total_deductions_annual", 0)
     if gross <= 0:
-        return 0.25  # fallback assumption
-    return min(0.60, deductions / gross)  # cap at 60% for sanity
+        return 0.25
+    return min(0.60, deductions / gross)

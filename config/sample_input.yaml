@@ -1,6 +1,5 @@
 # ==============================================================================
-# Sample Financial Profile
-# This file represents a single individual or household's financial picture.
+# Sample Financial Profile — Alex Morgan
 # ==============================================================================
 
 personal:
@@ -10,6 +9,9 @@ personal:
   dependents: 0
   risk_profile: "moderate"        # conservative | moderate | aggressive | very_aggressive
   salary_growth_outlook: "average" # low | average | high
+  employment_type: "employed"      # employed | self_employed | contractor | mixed
+  has_will: false
+  has_lpa: false
 
 income:
   primary_gross_annual: 58000
@@ -17,6 +19,9 @@ income:
   rental_income_monthly: 0
   side_income_monthly: 350
   investment_income_annual: 200
+  bonus_annual_low: 0
+  bonus_annual_expected: 0
+  bonus_annual_high: 0
 
 expenses:
   housing:
@@ -54,7 +59,7 @@ debts:
     type: "student_loan_postgrad"
   - name: "Credit Card"
     balance: 3200
-    interest_rate: 0.219           # use annual APR (e.g. 21.9% APR)
+    interest_rate: 0.219
     minimum_payment_monthly: 95
     type: "credit_card"
   - name: "Personal Loan"
@@ -65,12 +70,21 @@ debts:
 
 savings:
   emergency_fund: 4200
+  emergency_fund_type: "cash"
   general_savings: 2800
   isa_balance: 6500
   pension_balance: 18000
   pension_employer_contribution_pct: 0.05
   pension_personal_contribution_pct: 0.05
+  pension_employer_match_cap_pct: 0.05
   other_investments: 0
+  investment_fees:
+    isa_platform_fee: 0.0015
+    isa_fund_ocf: 0.0022
+    pension_platform_fee: 0.003
+    pension_fund_ocf: 0.002
+  isa_contributions_this_year: 0
+  lisa_contributions_this_year: 0
 
 goals:
   - name: "Build 6-month emergency fund"
@@ -79,7 +93,7 @@ goals:
     priority: "high"
     category: "safety_net"
   - name: "Buy first home"
-    target_amount: 35000       # deposit target
+    target_amount: 35000
     deadline_years: 4
     priority: "high"
     category: "property"
@@ -110,11 +124,15 @@ life_events:
     income_change_annual: 32000
   - year_offset: 4
     description: "Purchase first home"
-    one_off_expense: 45000       # deposit + fees
-    monthly_expense_change: 200  # mortgage vs rent delta
+    one_off_expense: 45000
+    monthly_expense_change: 200
   - year_offset: 5
     description: "First child"
     monthly_expense_change: 800
   - year_offset: 6
     description: "Childcare costs"
     monthly_expense_change: 2000
+    type: "childcare"
+  - year_offset: 7
+    description: "Expected inheritance"
+    one_off_income: 25000

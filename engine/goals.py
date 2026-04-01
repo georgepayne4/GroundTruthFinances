@@ -3,7 +3,8 @@ goals.py — Goal Feasibility Analysis
 
 Evaluates each financial goal against available surplus, existing savings,
 and time horizon.  Classifies goals as on-track, at-risk, or unreachable,
-and suggests required monthly contributions.
+suggests required monthly contributions, and calculates "what would it take"
+adjustments for off-track goals (FA-2).
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ def analyse_goals(profile: dict, assumptions: dict, cashflow: dict) -> dict[str,
     - Factor in inflation where applicable
     - Model LISA bonus for property goals
     - Suggest allocation of surplus across goals by priority
+    - Calculate "what would it take" adjustments (FA-2)
     """
     goals = profile.get("goals", [])
     sav = profile.get("savings", {})
@@ -57,6 +59,11 @@ def analyse_goals(profile: dict, assumptions: dict, cashflow: dict) -> dict[str,
         a["feasibility_with_allocation"] = _assess_feasibility(
             a["remaining_gap"], alloc, a["deadline_months"]
         )
+        # FA-2: Calculate "what would it take" for off-track goals
+        if a["feasibility_with_allocation"] != "on_track":
+            a["what_would_it_take"] = _what_would_it_take(
+                a["remaining_gap"], a["deadline_months"], surplus_monthly, alloc,
+            )
 
     # ------------------------------------------------------------------
     # 4. Summary
@@ -110,16 +117,13 @@ def _analyse_single_goal(
     if category == "property" and lisa_balance > 0 and age < 40:
         lisa_annual_max = 4000
         lisa_bonus_rate = 0.25
-        # Project future LISA bonuses over deadline period
         years_can_contribute = min(deadline_years, 40 - age)
         projected_bonuses = years_can_contribute * (lisa_annual_max * lisa_bonus_rate)
         projected_lisa_contributions = years_can_contribute * lisa_annual_max
         projected_lisa_total = lisa_balance + projected_lisa_contributions + projected_bonuses
 
-        # Add projected LISA growth to current progress
-        current_savings += projected_bonuses  # bonus is free money on top
+        current_savings += projected_bonuses
 
-        # Warn if property exceeds LISA limit
         lisa_property_limit = 450000
         lisa_eligible = property_price <= lisa_property_limit if property_price > 0 else True
 
@@ -144,7 +148,6 @@ def _analyse_single_goal(
     remaining_gap = max(0, inflation_adjusted_target - current_savings)
     progress_pct = (current_savings / inflation_adjusted_target * 100) if inflation_adjusted_target > 0 else 0
 
-    # Required monthly saving to close the gap
     required_monthly = remaining_gap / deadline_months if deadline_months > 0 else remaining_gap
 
     result = {
@@ -171,23 +174,15 @@ def _analyse_single_goal(
 
 
 def _estimate_current_progress(goal: dict, savings: dict) -> float:
-    """
-    Estimate how much of existing savings can be attributed to a goal.
-    Uses category heuristics:
-    - safety_net → emergency_fund
-    - property → general_savings + isa (these are likely being saved for deposit)
-    - For others, we don't assume existing savings apply
-    """
+    """Estimate how much of existing savings can be attributed to a goal."""
     category = goal.get("category", "general")
     if category == "safety_net":
         return savings.get("emergency_fund", 0)
     elif category == "property":
-        # Assume general savings + ISA + LISA are earmarked for deposit
         return (savings.get("general_savings", 0)
                 + savings.get("isa_balance", 0)
                 + savings.get("lisa_balance", 0))
     else:
-        # Conservative: don't assume savings are earmarked
         return 0
 
 
@@ -211,38 +206,72 @@ def _assess_feasibility(gap: float, monthly_contribution: float, months: int) ->
 
 
 # ---------------------------------------------------------------------------
+# "What would it take" calculator (FA-2)
+# ---------------------------------------------------------------------------
+
+def _what_would_it_take(
+    gap: float, deadline_months: int, total_surplus: float, allocated: float,
+) -> dict:
+    """
+    For off-track goals, calculate what adjustments would make them achievable.
+    """
+    if deadline_months <= 0 or gap <= 0:
+        return {}
+
+    required_monthly = gap / deadline_months
+    shortfall_monthly = max(0, required_monthly - allocated)
+
+    # Option 1: increase income by enough to close the gap
+    income_increase_needed = shortfall_monthly
+
+    # Option 2: reduce expenses by enough
+    expense_reduction_needed = shortfall_monthly
+
+    # Option 3: extend deadline until current allocation closes the gap
+    if allocated > 0:
+        extended_months = int(gap / allocated) + 1
+        extended_years = round(extended_months / 12, 1)
+    else:
+        extended_months = None
+        extended_years = None
+
+    # Option 4: combined (half income increase, half expense cut)
+    combined_each = shortfall_monthly / 2
+
+    return {
+        "shortfall_monthly": round(shortfall_monthly, 2),
+        "option_increase_income_monthly": round(income_increase_needed, 2),
+        "option_reduce_expenses_monthly": round(expense_reduction_needed, 2),
+        "option_extend_deadline_months": extended_months,
+        "option_extend_deadline_years": extended_years,
+        "option_combined_income_and_expense": round(combined_each, 2),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Surplus allocation
 # ---------------------------------------------------------------------------
 
 def _allocate_surplus(analyses: list[dict], surplus: float) -> list[float]:
     """
     Allocate available surplus across goals using a priority-weighted scheme.
-
-    Strategy:
-    1. High-priority goals get funded first (up to their required_monthly)
-    2. Remaining surplus flows to medium, then low priority
-    3. Within the same priority tier, allocate proportionally by required amount
     """
     allocations = [0.0] * len(analyses)
     remaining = max(0, surplus)
 
-    # Sort indices by priority rank
     indexed = sorted(enumerate(analyses), key=lambda x: x[1]["priority_rank"])
 
-    # Group by priority tier
     current_tier = None
     tier_indices = []
 
     for idx, a in indexed:
         if a["priority_rank"] != current_tier:
-            # Allocate to previous tier
             if tier_indices and remaining > 0:
                 remaining = _allocate_tier(analyses, allocations, tier_indices, remaining)
             tier_indices = []
             current_tier = a["priority_rank"]
         tier_indices.append(idx)
 
-    # Final tier
     if tier_indices and remaining > 0:
         _allocate_tier(analyses, allocations, tier_indices, remaining)
 
@@ -261,12 +290,10 @@ def _allocate_tier(
         return budget
 
     if budget >= total_needed:
-        # Fully fund everything in this tier
         for i in indices:
             allocations[i] = analyses[i]["required_monthly"]
         return budget - total_needed
     else:
-        # Pro-rata allocation
         for i in indices:
             share = analyses[i]["required_monthly"] / total_needed
             allocations[i] = budget * share

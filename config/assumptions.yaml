@@ -53,12 +53,24 @@ ltv_rate_tiers:
 mortgage:
   income_multiple_single: 4.5
   income_multiple_joint: 4.0
+  income_multiple_self_employed: 4.0
   min_deposit_pct: 0.05
   comfortable_deposit_pct: 0.10
   ideal_deposit_pct: 0.20
   stress_test_rate: 0.07          # lenders stress-test at higher rate
   max_dti_ratio: 0.45             # max debt-to-income ratio
   typical_term_years: 25
+
+mortgage_products:
+  two_year_fix: { rate: 0.045, fee: 999, term_years: 2 }
+  five_year_fix: { rate: 0.048, fee: 999, term_years: 5 }
+  tracker: { rate: 0.042, margin_above_base: 0.01, term_years: 2 }
+  svr: { rate: 0.075, fee: 0, term_years: 0 }
+
+shared_ownership:
+  rent_on_unowned_pct: 0.0275    # 2.75% of unowned share per year
+  service_charge_monthly: 150
+  min_share_pct: 0.25
 
 debt:
   emergency_fund_months: 3        # minimum recommended
@@ -99,3 +111,35 @@ life_events:
   default_projection_years: 10
   retirement_age: 67
   life_expectancy: 85
+
+childcare:
+  tax_free_childcare_pct: 0.20
+  max_government_topup_per_child: 2000
+  eligible_age_max: 11
+  free_hours_3_4_year_olds: 30    # hours per week, 38 weeks/year
+  free_hours_hourly_rate: 6.50    # approximate value per hour
+
+inheritance_tax:
+  nil_rate_band: 325000
+  residence_nil_rate: 175000
+  rate: 0.40
+  spousal_exemption: true
+
+glide_path:
+  - { age: 30, equity_pct: 0.90 }
+  - { age: 40, equity_pct: 0.80 }
+  - { age: 50, equity_pct: 0.65 }
+  - { age: 60, equity_pct: 0.50 }
+  - { age: 67, equity_pct: 0.40 }
+
+annuity:
+  rate_per_10k_age_60: 550
+  rate_per_10k_age_65: 620
+  rate_per_10k_age_67: 660
+  rate_per_10k_age_70: 720
+
+expense_benchmarks:
+  housing_pct_of_net: 0.33
+  transport_pct_of_net: 0.12
+  food_pct_of_net: 0.11
+  discretionary_pct_of_net: 0.15

@@ -1,18 +1,19 @@
 """
-main.py — GroundTruth Financial Planning Engine
+main.py — GroundTruth Financial Planning Engine v3.0
 
 Entry point that orchestrates the full analysis pipeline:
 1. Load profile and assumptions
-2. Validate inputs (advisor validation layer)
+2. Validate inputs
 3. Run analysis modules in dependency order
 4. Score financial health
 5. Generate advisor insights
-6. Assemble and save report
+6. Run estate analysis
+7. Assemble and save report
 
 Usage:
     python main.py                                    # uses sample input
     python main.py --profile path/to/profile.yaml     # custom profile
-    python main.py --assumptions path/to/assumptions.yaml  # custom assumptions
+    python main.py --assumptions path/to/assumptions.yaml
 """
 
 from __future__ import annotations
@@ -33,6 +34,7 @@ from engine.scoring import calculate_scores
 from engine.insights import generate_insights
 from engine.insurance import assess_insurance
 from engine.scenarios import run_scenarios
+from engine.estate import analyse_estate
 from engine.report import assemble_report, save_report
 
 
@@ -76,7 +78,7 @@ def main() -> None:
             print(f"    - [{e.field}] {e.message}")
 
     # ------------------------------------------------------------------
-    # 3. Cashflow analysis (foundation for everything else)
+    # 3. Cashflow analysis
     # ------------------------------------------------------------------
     print("\nRunning cashflow analysis...")
     cashflow = analyse_cashflow(profile, assumptions)
@@ -85,6 +87,11 @@ def main() -> None:
     print(f"  Net monthly income: {cashflow['net_income']['monthly']:,.2f}")
     print(f"  Monthly surplus:    {surplus:,.2f}")
     print(f"  Savings rate:       {savings_rate:.1f}%")
+
+    if cashflow.get("spending_benchmarks"):
+        total_saving = cashflow["spending_benchmarks"].get("total_potential_monthly_saving", 0)
+        if total_saving > 0:
+            print(f"  Benchmark savings:  {total_saving:,.2f}/mo potential")
 
     # ------------------------------------------------------------------
     # 4. Debt analysis
@@ -114,7 +121,13 @@ def main() -> None:
     investment_result = analyse_investments(profile, assumptions, cashflow)
     pension = investment_result.get("pension_analysis", {})
     print(f"  Pension adequate:   {pension.get('adequate', False)}")
-    print(f"  Replacement ratio:  {pension.get('income_replacement_ratio_pct', 0):.1f}%")
+    print(f"  Replacement ratio:  {pension.get('income_replacement_ratio_pct', 0):.1f}% (net of tax)")
+    if investment_result.get("pension_match_optimisation"):
+        free = investment_result["pension_match_optimisation"]["free_money_left_on_table"]
+        print(f"  Employer match gap: {free:,.0f}/year left on table")
+    fees = investment_result.get("fee_analysis", {})
+    if fees.get("fee_drag_over_term", 0) > 0:
+        print(f"  Fee drag:           {fees['fee_drag_over_term']:,.0f} over term")
 
     # ------------------------------------------------------------------
     # 7. Mortgage readiness
@@ -125,6 +138,15 @@ def main() -> None:
         print(f"  Readiness:          {mortgage_result.get('readiness', 'N/A')}")
         blockers = mortgage_result.get("blockers", [])
         print(f"  Blockers:           {len(blockers)}")
+        products = mortgage_result.get("product_comparison", [])
+        if products:
+            best = products[0]
+            print(f"  Best product:       {best['product']} at {best['rate_pct']:.2f}%")
+        so = mortgage_result.get("shared_ownership")
+        if so:
+            affordable = [s for s in so.get("shares", []) if s["affordable"]]
+            if affordable:
+                print(f"  Shared Ownership:   {affordable[0]['share_pct']:.0f}% share is affordable")
     else:
         print("  Not applicable")
 
@@ -145,6 +167,9 @@ def main() -> None:
     print(f"  Projection years:   {life_event_result.get('projection_years', 0)}")
     print(f"  Starting net worth: {le_summary.get('starting_net_worth', 0):,.2f}")
     print(f"  Ending net worth:   {le_summary.get('ending_net_worth', 0):,.2f}")
+    childcare = le_summary.get("total_childcare_tax_relief", 0)
+    if childcare > 0:
+        print(f"  Childcare relief:   {childcare:,.2f} total saved")
 
     # ------------------------------------------------------------------
     # 10. Financial health scoring
@@ -157,14 +182,13 @@ def main() -> None:
     print(f"  Overall score:      {scoring_result.get('overall_score', 0):.0f}/100")
     print(f"  Grade:              {scoring_result.get('grade', 'N/A')}")
 
-    # Print category breakdown
     for cat_name, cat_data in scoring_result.get("categories", {}).items():
         score = cat_data.get("score", 0)
         bar = "#" * int(score / 5) + "-" * (20 - int(score / 5))
         print(f"    {cat_name:<25} [{bar}] {score:.0f}")
 
     # ------------------------------------------------------------------
-    # 11. Stress / scenario testing
+    # 11. Stress scenarios
     # ------------------------------------------------------------------
     print("\nRunning stress scenarios...")
     scenario_result = run_scenarios(
@@ -180,7 +204,18 @@ def main() -> None:
         print(f"  Rate +3% payment:   {worst.get('monthly_payment', 0):,.0f}/mo ({('affordable' if worst.get('affordable') else 'unaffordable')})")
 
     # ------------------------------------------------------------------
-    # 12. Advisor insights
+    # 12. Estate analysis
+    # ------------------------------------------------------------------
+    print("\nRunning estate analysis...")
+    estate_result = analyse_estate(profile, assumptions, investment_result, mortgage_result)
+    print(f"  Projected estate:   {estate_result.get('projected_estate_value', 0):,.0f}")
+    print(f"  IHT liability:      {estate_result.get('iht_liability', 0):,.0f}")
+    planning = estate_result.get("estate_planning", {})
+    if planning.get("actions"):
+        print(f"  Planning actions:   {len(planning['actions'])}")
+
+    # ------------------------------------------------------------------
+    # 13. Advisor insights
     # ------------------------------------------------------------------
     print("\nGenerating advisor insights...")
     insights_result = generate_insights(
@@ -205,8 +240,16 @@ def main() -> None:
             print(f"\n  {p['priority']}. [{p['category'].upper()}] {p['title']}")
             print(f"     {p['detail']}")
 
+    # Print review schedule
+    review = insights_result.get("review_schedule", {})
+    if review:
+        print(f"\n{'=' * 60}")
+        print("REVIEW SCHEDULE")
+        print(f"{'=' * 60}")
+        print(f"  Next review: {review.get('next_review', 'N/A')}")
+
     # ------------------------------------------------------------------
-    # 13. Assemble and save report
+    # 14. Assemble and save report
     # ------------------------------------------------------------------
     print(f"\n{'=' * 60}")
     output_path = project_root / "outputs" / "report.json"
@@ -224,6 +267,7 @@ def main() -> None:
         insights=insights_result,
         insurance=insurance_result,
         scenarios=scenario_result,
+        estate=estate_result,
     )
 
     saved_path = save_report(report, output_path)

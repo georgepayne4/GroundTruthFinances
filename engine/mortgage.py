@@ -1,9 +1,15 @@
 """
 mortgage.py — Mortgage Readiness Assessment
 
-Estimates borrowing capacity using income multiples, assesses deposit
-adequacy, runs affordability stress tests, and identifies blockers
-preventing mortgage approval.
+Comprehensive mortgage analysis including:
+- MA-1: Product comparison (fixed vs tracker)
+- MA-2: Overpayment modelling
+- MA-3: Remortgage cliff-edge modelling
+- MA-4: Equity growth (tracked in life_events.py)
+- MA-5: Shared Ownership modelling
+- MA-6: Employment type impact
+- MA-7: Credit score awareness
+- MA-8: Deposit source documentation
 """
 
 from __future__ import annotations
@@ -14,13 +20,7 @@ from typing import Any
 
 def analyse_mortgage(profile: dict, assumptions: dict, cashflow: dict, debt_analysis: dict) -> dict[str, Any]:
     """
-    Comprehensive mortgage readiness assessment:
-    - Borrowing capacity from income multiples
-    - Deposit analysis (current vs required)
-    - Monthly repayment estimates at current and stress-test rates
-    - Affordability check against net income
-    - Blocker identification
-    - Time to mortgage readiness
+    Comprehensive mortgage readiness assessment.
     """
     mort = profile.get("mortgage")
     if mort is None:
@@ -39,23 +39,27 @@ def analyse_mortgage(profile: dict, assumptions: dict, cashflow: dict, debt_anal
     primary_gross = inc.get("primary_gross_annual", 0)
     partner_gross = inc.get("partner_gross_annual", 0)
     surplus_monthly = cashflow.get("surplus", {}).get("monthly", 0)
+    employment_type = personal.get("employment_type", "employed")
 
     # ------------------------------------------------------------------
-    # 1. Borrowing capacity
+    # 1. Borrowing capacity (MA-6: employment type impact)
     # ------------------------------------------------------------------
     if joint and partner_gross > 0:
         combined_income = primary_gross + partner_gross
         income_multiple = mort_cfg.get("income_multiple_joint", 4.0)
     else:
         combined_income = primary_gross
-        income_multiple = mort_cfg.get("income_multiple_single", 4.5)
+        if employment_type in ("self_employed", "contractor"):
+            income_multiple = mort_cfg.get("income_multiple_self_employed", 4.0)
+        else:
+            income_multiple = mort_cfg.get("income_multiple_single", 4.5)
 
     max_borrowing = combined_income * income_multiple
 
-    # Reduce borrowing capacity for existing debt (conservative approach)
+    # Reduce borrowing capacity for existing debt
     total_debt_balance = debt_analysis.get("summary", {}).get("total_balance", 0)
     total_debt_payments = debt_analysis.get("summary", {}).get("total_minimum_monthly", 0)
-    dti_adjustment = min(total_debt_payments * 12 * 3, max_borrowing * 0.20)  # cap deduction at 20%
+    dti_adjustment = min(total_debt_payments * 12 * 3, max_borrowing * 0.20)
     adjusted_borrowing = max(0, max_borrowing - dti_adjustment)
 
     # ------------------------------------------------------------------
@@ -66,15 +70,13 @@ def analyse_mortgage(profile: dict, assumptions: dict, cashflow: dict, debt_anal
     comfortable_deposit = target_value * mort_cfg.get("comfortable_deposit_pct", 0.10)
     ideal_deposit = target_value * mort_cfg.get("ideal_deposit_pct", 0.20)
 
-    # Available deposit = liquid savings minus emergency fund buffer
     emergency_fund = sav.get("emergency_fund", 0)
     liquid = sav.get("_total_liquid", 0)
-    available_for_deposit = max(0, liquid - emergency_fund)  # protect emergency fund
+    available_for_deposit = max(0, liquid - emergency_fund)
 
     deposit_gap = max(0, required_deposit - available_for_deposit)
     deposit_adequate = available_for_deposit >= required_deposit
 
-    # Months to save deposit gap from surplus
     months_to_deposit = (
         math.ceil(deposit_gap / surplus_monthly) if surplus_monthly > 0 and deposit_gap > 0
         else (0 if deposit_gap <= 0 else float("inf"))
@@ -89,20 +91,17 @@ def analyse_mortgage(profile: dict, assumptions: dict, cashflow: dict, debt_anal
     current_ltv = mortgage_amount / target_value if target_value > 0 else 1.0
     ltv_pct = current_ltv * 100
 
-    # Estimate rate based on LTV tier
     stress_rate = mort_cfg.get("stress_test_rate", 0.07)
     base_market_rate = stress_rate - 0.02
     ltv_tiers = assumptions.get("ltv_rate_tiers", [])
     ltv_adjustment = _get_ltv_rate_adjustment(current_ltv, ltv_tiers)
     estimated_market_rate = base_market_rate + ltv_adjustment
 
-    # Find next better LTV band
     ltv_analysis = _analyse_ltv_bands(target_value, available_for_deposit, emergency_fund, ltv_tiers, base_market_rate, term_years)
 
     monthly_repayment_market = _monthly_repayment(mortgage_amount, estimated_market_rate, term_years)
     monthly_repayment_stress = _monthly_repayment(mortgage_amount, stress_rate, term_years)
 
-    # Total cost of mortgage
     total_repayment = monthly_repayment_market * term_years * 12
     total_interest = total_repayment - mortgage_amount
 
@@ -112,25 +111,82 @@ def analyse_mortgage(profile: dict, assumptions: dict, cashflow: dict, debt_anal
     net_monthly = cashflow.get("net_income", {}).get("monthly", 0)
     current_rent = profile.get("expenses", {}).get("housing", {}).get("rent_monthly", 0)
 
-    # After mortgage: replace rent with mortgage payment
     net_change_monthly = monthly_repayment_market - current_rent
     post_mortgage_surplus = surplus_monthly - net_change_monthly
 
     affordability_ratio = (monthly_repayment_market / net_monthly * 100) if net_monthly > 0 else 100
     stress_affordability_ratio = (monthly_repayment_stress / net_monthly * 100) if net_monthly > 0 else 100
 
-    affordable = affordability_ratio <= 35  # lender guideline
+    affordable = affordability_ratio <= 35
     stress_test_passes = stress_affordability_ratio <= 45
 
     # ------------------------------------------------------------------
-    # 5. Acquisition costs (stamp duty + fees)
+    # 5. Acquisition costs
     # ------------------------------------------------------------------
     first_time_buyer = not profile.get("_owns_property", False)
     sdlt = _calculate_stamp_duty(target_value, first_time_buyer, assumptions)
     acquisition_costs = _estimate_acquisition_costs(target_value, mortgage_amount, sdlt, assumptions)
 
     # ------------------------------------------------------------------
-    # 6. Blocker identification
+    # 6. MA-1: Product comparison
+    # ------------------------------------------------------------------
+    products_cfg = assumptions.get("mortgage_products", {})
+    product_comparison = _compare_products(
+        mortgage_amount, term_years, products_cfg, net_monthly,
+    )
+
+    # ------------------------------------------------------------------
+    # 7. MA-2: Overpayment modelling
+    # ------------------------------------------------------------------
+    overpayment_analysis = _overpayment_analysis(
+        mortgage_amount, estimated_market_rate, term_years,
+    )
+
+    # ------------------------------------------------------------------
+    # 8. MA-3: Remortgage cliff-edge
+    # ------------------------------------------------------------------
+    remortgage_analysis = _remortgage_cliff_edge(
+        mortgage_amount, term_years, products_cfg, net_monthly, current_rent, surplus_monthly,
+    )
+
+    # ------------------------------------------------------------------
+    # 9. MA-5: Shared Ownership
+    # ------------------------------------------------------------------
+    shared_ownership = None
+    if not can_borrow_enough:
+        so_cfg = assumptions.get("shared_ownership", {})
+        shared_ownership = _shared_ownership_analysis(
+            target_value, adjusted_borrowing, available_for_deposit,
+            term_years, estimated_market_rate, so_cfg,
+        )
+
+    # ------------------------------------------------------------------
+    # 10. MA-7: Credit score awareness
+    # ------------------------------------------------------------------
+    credit_warnings = _credit_score_warnings(profile)
+
+    # ------------------------------------------------------------------
+    # 11. MA-8: Deposit source documentation
+    # ------------------------------------------------------------------
+    deposit_source = _deposit_source_check(sav, mort)
+
+    # ------------------------------------------------------------------
+    # 12. MA-6: Employment type notes
+    # ------------------------------------------------------------------
+    employment_notes = None
+    if employment_type in ("self_employed", "contractor"):
+        employment_notes = {
+            "type": employment_type,
+            "income_multiple_used": income_multiple,
+            "warnings": [
+                "Most lenders require 2-3 years of accounts/tax returns for self-employed applicants.",
+                "Net profit (not turnover) is used for affordability calculations.",
+                "Some specialist lenders may offer better terms for contractors with day rates.",
+            ],
+        }
+
+    # ------------------------------------------------------------------
+    # 13. Blockers
     # ------------------------------------------------------------------
     blockers = []
     if not can_borrow_enough:
@@ -175,19 +231,27 @@ def analyse_mortgage(profile: dict, assumptions: dict, cashflow: dict, debt_anal
             "action": "Reduce monthly debt obligations before mortgage application.",
         })
 
+    if employment_type in ("self_employed", "contractor"):
+        blockers.append({
+            "type": "self_employed_documentation",
+            "message": "Self-employed/contractor status requires additional documentation.",
+            "action": "Prepare 2-3 years of accounts, SA302 tax calculations, and tax year overviews.",
+        })
+
     # ------------------------------------------------------------------
-    # 7. Readiness classification
+    # 14. Readiness
     # ------------------------------------------------------------------
-    if not blockers:
+    non_doc_blockers = [b for b in blockers if b["type"] != "self_employed_documentation"]
+    if not non_doc_blockers:
         readiness = "ready"
-    elif all(b["type"] in ("deposit_shortfall",) for b in blockers):
+    elif all(b["type"] in ("deposit_shortfall",) for b in non_doc_blockers):
         readiness = "near_ready"
-    elif len(blockers) <= 2:
+    elif len(non_doc_blockers) <= 2:
         readiness = "needs_work"
     else:
         readiness = "not_ready"
 
-    return {
+    result = {
         "applicable": True,
         "target_property_value": round(target_value, 2),
         "first_time_buyer": first_time_buyer,
@@ -234,8 +298,273 @@ def analyse_mortgage(profile: dict, assumptions: dict, cashflow: dict, debt_anal
             "bands": ltv_analysis,
         },
         "acquisition_costs": acquisition_costs,
+        "product_comparison": product_comparison,
+        "overpayment_analysis": overpayment_analysis,
+        "remortgage_analysis": remortgage_analysis,
+        "credit_warnings": credit_warnings,
+        "deposit_source": deposit_source,
         "blockers": blockers,
         "readiness": readiness,
+    }
+
+    if shared_ownership:
+        result["shared_ownership"] = shared_ownership
+    if employment_notes:
+        result["employment_impact"] = employment_notes
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# MA-1: Product comparison
+# ---------------------------------------------------------------------------
+
+def _compare_products(
+    mortgage_amount: float, term_years: int,
+    products_cfg: dict, net_monthly: float,
+) -> list[dict]:
+    """Compare mortgage product types."""
+    comparisons = []
+    svr_rate = products_cfg.get("svr", {}).get("rate", 0.075)
+
+    for name, product in products_cfg.items():
+        if name == "svr":
+            continue
+        rate = product.get("rate", 0.05)
+        fee = product.get("fee", 0)
+        product_term = product.get("term_years", 2)
+
+        monthly = _monthly_repayment(mortgage_amount, rate, term_years)
+        total_during_product = monthly * product_term * 12 + fee
+
+        # Cost if switching to SVR after product ends
+        svr_monthly = _monthly_repayment(mortgage_amount, svr_rate, term_years)
+        remaining_years = term_years - product_term
+        total_on_svr = svr_monthly * remaining_years * 12
+        total_cost = total_during_product + total_on_svr
+
+        affordability_pct = (monthly / net_monthly * 100) if net_monthly > 0 else 100
+
+        comparisons.append({
+            "product": name,
+            "rate_pct": round(rate * 100, 2),
+            "fee": fee,
+            "product_term_years": product_term,
+            "monthly_payment": round(monthly, 2),
+            "affordability_pct": round(affordability_pct, 1),
+            "total_cost_over_mortgage": round(total_cost, 2),
+            "svr_monthly_after": round(svr_monthly, 2),
+            "svr_payment_increase": round(svr_monthly - monthly, 2),
+        })
+
+    return sorted(comparisons, key=lambda x: x["total_cost_over_mortgage"])
+
+
+# ---------------------------------------------------------------------------
+# MA-2: Overpayment modelling
+# ---------------------------------------------------------------------------
+
+def _overpayment_analysis(
+    principal: float, annual_rate: float, term_years: int,
+) -> list[dict]:
+    """Model impact of monthly overpayments."""
+    base_monthly = _monthly_repayment(principal, annual_rate, term_years)
+    base_total_interest = base_monthly * term_years * 12 - principal
+    annual_overpayment_limit = principal * 0.10  # 10% penalty-free
+
+    scenarios = []
+    for extra in [100, 200, 500]:
+        # Check against overpayment limit
+        annual_extra = extra * 12
+        exceeds_limit = annual_extra > annual_overpayment_limit
+
+        # Simulate payoff
+        months, total_interest = _simulate_overpayment(principal, annual_rate, base_monthly, extra)
+        years_to_payoff = months / 12
+        interest_saved = base_total_interest - total_interest
+        months_saved = (term_years * 12) - months
+
+        scenarios.append({
+            "extra_monthly": extra,
+            "new_payoff_years": round(years_to_payoff, 1),
+            "months_saved": months_saved,
+            "years_saved": round(months_saved / 12, 1),
+            "total_interest_saved": round(interest_saved, 2),
+            "exceeds_10pct_limit": exceeds_limit,
+        })
+
+    return scenarios
+
+
+def _simulate_overpayment(
+    principal: float, annual_rate: float,
+    base_monthly: float, extra: float,
+) -> tuple[int, float]:
+    """Simulate month-by-month payoff with overpayment."""
+    monthly_rate = annual_rate / 12
+    remaining = principal
+    total_interest = 0.0
+    months = 0
+
+    while remaining > 0 and months < 600:
+        interest = remaining * monthly_rate
+        total_interest += interest
+        payment = min(base_monthly + extra, remaining + interest)
+        principal_paid = payment - interest
+        remaining = max(0, remaining - principal_paid)
+        months += 1
+
+    return months, total_interest
+
+
+# ---------------------------------------------------------------------------
+# MA-3: Remortgage cliff-edge
+# ---------------------------------------------------------------------------
+
+def _remortgage_cliff_edge(
+    mortgage_amount: float, term_years: int,
+    products_cfg: dict, net_monthly: float,
+    current_rent: float, surplus_monthly: float,
+) -> dict:
+    """Model what happens when a fixed rate ends."""
+    svr_rate = products_cfg.get("svr", {}).get("rate", 0.075)
+    svr_monthly = _monthly_repayment(mortgage_amount, svr_rate, term_years)
+
+    cliff_edges = []
+    for name, product in products_cfg.items():
+        if name == "svr":
+            continue
+        rate = product.get("rate", 0.05)
+        product_term = product.get("term_years", 2)
+        fixed_monthly = _monthly_repayment(mortgage_amount, rate, term_years)
+        payment_shock = svr_monthly - fixed_monthly
+
+        cliff_edges.append({
+            "product": name,
+            "fixed_rate_pct": round(rate * 100, 2),
+            "fixed_monthly": round(fixed_monthly, 2),
+            "svr_monthly": round(svr_monthly, 2),
+            "payment_shock": round(payment_shock, 2),
+            "ends_after_years": product_term,
+            "remortgage_fee_estimate": 1500,
+        })
+
+    return {
+        "cliff_edges": cliff_edges,
+        "advice": "Set a calendar reminder 3 months before your fix ends. Budget for remortgage fees every 2-5 years.",
+    }
+
+
+# ---------------------------------------------------------------------------
+# MA-5: Shared Ownership
+# ---------------------------------------------------------------------------
+
+def _shared_ownership_analysis(
+    property_value: float, max_borrowing: float, available_deposit: float,
+    term_years: int, market_rate: float, so_cfg: dict,
+) -> dict:
+    """Analyse Shared Ownership as alternative when full purchase isn't affordable."""
+    rent_pct = so_cfg.get("rent_on_unowned_pct", 0.0275)
+    service_charge = so_cfg.get("service_charge_monthly", 150)
+    min_share = so_cfg.get("min_share_pct", 0.25)
+
+    # Find affordable share
+    shares = []
+    for share_pct in [0.25, 0.50, 0.75]:
+        share_value = property_value * share_pct
+        share_deposit = share_value * 0.10  # 10% of share
+        share_mortgage = share_value - share_deposit
+        unowned_value = property_value * (1 - share_pct)
+        monthly_rent_on_unowned = unowned_value * rent_pct / 12
+
+        mortgage_payment = _monthly_repayment(share_mortgage, market_rate, term_years)
+        total_monthly = mortgage_payment + monthly_rent_on_unowned + service_charge
+
+        affordable = share_mortgage <= max_borrowing and share_deposit <= available_deposit
+
+        shares.append({
+            "share_pct": round(share_pct * 100, 0),
+            "share_value": round(share_value, 2),
+            "deposit_needed": round(share_deposit, 2),
+            "mortgage_on_share": round(share_mortgage, 2),
+            "mortgage_payment_monthly": round(mortgage_payment, 2),
+            "rent_on_unowned_monthly": round(monthly_rent_on_unowned, 2),
+            "service_charge_monthly": service_charge,
+            "total_monthly_cost": round(total_monthly, 2),
+            "affordable": affordable,
+        })
+
+    return {
+        "alternative": "Shared Ownership",
+        "shares": shares,
+        "note": "Shared Ownership lets you buy a share (25-75%) and rent the rest. You can 'staircase' to full ownership over time.",
+    }
+
+
+# ---------------------------------------------------------------------------
+# MA-7: Credit score warnings
+# ---------------------------------------------------------------------------
+
+def _credit_score_warnings(profile: dict) -> list[dict]:
+    """Flag credit score risk factors for mortgage applications."""
+    warnings = []
+    debts = profile.get("debts", [])
+
+    for d in debts:
+        if d.get("type") == "credit_card" and d.get("balance", 0) > 0:
+            limit = d.get("credit_limit", 0)
+            balance = d.get("balance", 0)
+            if limit > 0:
+                utilisation = balance / limit
+                if utilisation > 0.30:
+                    warnings.append({
+                        "type": "high_utilisation",
+                        "debt": d.get("name", "Credit card"),
+                        "message": f"Credit utilisation at {utilisation*100:.0f}% (balance £{balance:,.0f} / limit £{limit:,.0f}). Keep below 30%.",
+                    })
+            else:
+                warnings.append({
+                    "type": "outstanding_balance",
+                    "debt": d.get("name", "Credit card"),
+                    "message": f"Outstanding balance of £{balance:,.0f}. Pay to zero before mortgage application.",
+                })
+
+    if not warnings:
+        warnings.append({
+            "type": "general",
+            "message": "Pay credit card balances to zero before applying. Avoid new credit applications 6 months before.",
+        })
+
+    return warnings
+
+
+# ---------------------------------------------------------------------------
+# MA-8: Deposit source check
+# ---------------------------------------------------------------------------
+
+def _deposit_source_check(sav: dict, mort: dict) -> dict:
+    """Check deposit source documentation requirements."""
+    sources = mort.get("deposit_sources", {})
+    gifted = sources.get("gifted", 0)
+    inherited = sources.get("inherited", 0)
+
+    notes = [
+        "Ensure you have 3-6 months of bank statements showing savings buildup.",
+        "Lenders will ask for source of deposit documentation.",
+    ]
+    if gifted > 0:
+        notes.append(
+            f"Gifted deposit of £{gifted:,.0f} requires a gifted deposit letter from the donor. "
+            "Some lenders don't accept gifted deposits."
+        )
+    if inherited > 0:
+        notes.append(
+            f"Inherited funds of £{inherited:,.0f} — keep probate documentation as evidence."
+        )
+
+    return {
+        "sources": sources if sources else {"saved": round(sav.get("_total_liquid", 0), 2)},
+        "notes": notes,
     }
 
 
@@ -248,7 +577,6 @@ def _get_ltv_rate_adjustment(ltv: float, tiers: list[dict]) -> float:
     for tier in sorted(tiers, key=lambda t: t["max_ltv"]):
         if ltv <= tier["max_ltv"]:
             return tier["rate_adjustment"]
-    # Above all tiers — return worst tier adjustment
     return tiers[-1]["rate_adjustment"] if tiers else 0.0
 
 
@@ -256,9 +584,7 @@ def _analyse_ltv_bands(
     property_value: float, available_deposit: float, emergency_fund: float,
     tiers: list[dict], base_rate: float, term_years: int,
 ) -> list[dict]:
-    """
-    Show what each LTV band would cost and how much extra deposit is needed.
-    """
+    """Show what each LTV band would cost."""
     bands = []
     for tier in sorted(tiers, key=lambda t: t["max_ltv"]):
         max_ltv = tier["max_ltv"]
@@ -288,20 +614,7 @@ def _analyse_ltv_bands(
 # ---------------------------------------------------------------------------
 
 def _calculate_stamp_duty(property_value: float, first_time_buyer: bool, assumptions: dict) -> dict:
-    """
-    Calculate UK Stamp Duty Land Tax.
-
-    First-time buyer rates (property up to £625k):
-        £0 – £425,000:     0%
-        £425,001 – £625,000: 5%
-        Above £625,000: standard rates apply (FTB relief lost)
-
-    Standard rates:
-        £0 – £250,000:       0%
-        £250,001 – £925,000:  5%
-        £925,001 – £1,500,000: 10%
-        Above £1,500,000:     12%
-    """
+    """Calculate UK Stamp Duty Land Tax."""
     sdlt_cfg = assumptions.get("stamp_duty", {})
 
     if first_time_buyer and property_value <= 625000:
@@ -355,12 +668,9 @@ def _calculate_stamp_duty(property_value: float, first_time_buyer: bool, assumpt
 def _estimate_acquisition_costs(
     property_value: float, mortgage_amount: float, sdlt: dict, assumptions: dict,
 ) -> dict:
-    """
-    Itemised estimate of total acquisition costs.
-    """
+    """Itemised estimate of total acquisition costs."""
     stamp_duty = sdlt["total_stamp_duty"]
 
-    # Estimated professional fees
     solicitor = 1500
     survey = 500
     valuation = 350
@@ -388,10 +698,7 @@ def _estimate_acquisition_costs(
 # ---------------------------------------------------------------------------
 
 def _monthly_repayment(principal: float, annual_rate: float, term_years: int) -> float:
-    """
-    Standard amortising mortgage repayment formula.
-    M = P * [r(1+r)^n] / [(1+r)^n - 1]
-    """
+    """Standard amortising mortgage repayment formula."""
     if principal <= 0 or term_years <= 0:
         return 0.0
     if annual_rate <= 0:
