@@ -11,8 +11,8 @@ Entry point that orchestrates the full analysis pipeline:
 7. Assemble and save report
 
 Usage:
-    python main.py                                    # uses sample input
-    python main.py --profile path/to/profile.yaml     # custom profile
+    python main.py                                    # uses sample input by default
+    python main.py --profile path/to/profile.yaml     # custom profile (config/<name>_input.yaml)
     python main.py --assumptions path/to/assumptions.yaml
 """
 
