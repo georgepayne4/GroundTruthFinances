@@ -106,6 +106,7 @@ def _normalise_profile(raw: dict) -> dict:
         sav.get("emergency_fund", 0)
         + sav.get("general_savings", 0)
         + sav.get("isa_balance", 0)
+        + sav.get("lisa_balance", 0)
     )
     illiquid = sav.get("pension_balance", 0) + sav.get("other_investments", 0)
     sav["_total_liquid"] = liquid

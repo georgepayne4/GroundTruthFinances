@@ -17,3 +17,6 @@ outputs/
 # OS
 .DS_Store
 Thumbs.db
+
+# Personal Config
+george_input.yaml

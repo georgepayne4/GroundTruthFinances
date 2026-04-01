@@ -42,14 +42,19 @@ expenses:
     miscellaneous_monthly: 100
 
 debts:
-  - name: "Student Loan (Plan 2)"
+  - name: "Student Loan - Undergrad (Plan 2)"
     balance: 28000
     interest_rate: 0.065
     minimum_payment_monthly: 180
     type: "student_loan"
+  - name: "Student Loan - Postgrad (Plan 3)"
+    balance: 12000
+    interest_rate: 0.065
+    minimum_payment_monthly: 50
+    type: "student_loan_postgrad"
   - name: "Credit Card"
     balance: 3200
-    interest_rate: 0.219
+    interest_rate: 0.219           # use annual APR (e.g. 21.9% APR)
     minimum_payment_monthly: 95
     type: "credit_card"
   - name: "Personal Loan"
@@ -99,7 +104,7 @@ mortgage:
 life_events:
   - year_offset: 1
     description: "Salary increase after promotion"
-    income_change_annual: 6000
+    income_change_annual: 4000
   - year_offset: 3
     description: "Partner income begins"
     income_change_annual: 32000
@@ -109,7 +114,7 @@ life_events:
     monthly_expense_change: 200  # mortgage vs rent delta
   - year_offset: 5
     description: "First child"
-    monthly_expense_change: 600
+    monthly_expense_change: 800
   - year_offset: 6
     description: "Childcare costs"
-    monthly_expense_change: 800
+    monthly_expense_change: 2000

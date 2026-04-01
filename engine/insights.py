@@ -261,9 +261,9 @@ def _debt_insights(debt_analysis: dict) -> list[str]:
                 f"Credit card '{d['name']}' at {d['interest_rate_pct']:.1f}% APR should be your "
                 f"top repayment priority. Consider a 0% balance transfer card to freeze interest while repaying."
             )
-        if d["type"] == "student_loan":
+        if d["type"] in ("student_loan", "student_loan_postgrad"):
             insights.append(
-                f"Student loan repayment is income-contingent and relatively low-rate. "
+                f"Student loan '{d['name']}' repayment is income-contingent and relatively low-rate. "
                 f"Do not prioritise overpaying this above higher-interest debts."
             )
 

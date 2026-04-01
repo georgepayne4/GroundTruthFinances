@@ -133,8 +133,10 @@ def _estimate_current_progress(goal: dict, savings: dict) -> float:
     if category == "safety_net":
         return savings.get("emergency_fund", 0)
     elif category == "property":
-        # Assume general savings + ISA are earmarked for deposit
-        return savings.get("general_savings", 0) + savings.get("isa_balance", 0)
+        # Assume general savings + ISA + LISA are earmarked for deposit
+        return (savings.get("general_savings", 0)
+                + savings.get("isa_balance", 0)
+                + savings.get("lisa_balance", 0))
     else:
         # Conservative: don't assume savings are earmarked
         return 0

@@ -85,9 +85,10 @@ def analyse_investments(profile: dict, assumptions: dict, cashflow: dict) -> dic
     # 1. Current portfolio snapshot
     # ------------------------------------------------------------------
     isa = sav.get("isa_balance", 0)
+    lisa = sav.get("lisa_balance", 0)
     pension = sav.get("pension_balance", 0)
     other_inv = sav.get("other_investments", 0)
-    total_invested = isa + pension + other_inv
+    total_invested = isa + lisa + pension + other_inv
 
     primary_gross = inc.get("primary_gross_annual", 0)
     pension_personal_pct = sav.get("pension_personal_contribution_pct", 0)
@@ -158,6 +159,7 @@ def analyse_investments(profile: dict, assumptions: dict, cashflow: dict) -> dic
     return {
         "current_portfolio": {
             "isa_balance": round(isa, 2),
+            "lisa_balance": round(lisa, 2),
             "pension_balance": round(pension, 2),
             "other_investments": round(other_inv, 2),
             "total_invested": round(total_invested, 2),
