@@ -31,6 +31,8 @@ from engine.mortgage import analyse_mortgage
 from engine.life_events import simulate_life_events
 from engine.scoring import calculate_scores
 from engine.insights import generate_insights
+from engine.insurance import assess_insurance
+from engine.scenarios import run_scenarios
 from engine.report import assemble_report, save_report
 
 
@@ -127,7 +129,15 @@ def main() -> None:
         print("  Not applicable")
 
     # ------------------------------------------------------------------
-    # 8. Life event simulation
+    # 8. Insurance gap assessment
+    # ------------------------------------------------------------------
+    print("\nAssessing insurance coverage...")
+    insurance_result = assess_insurance(profile, assumptions, cashflow, mortgage_result)
+    print(f"  Overall:            {insurance_result.get('overall_assessment', 'unknown')}")
+    print(f"  Gaps identified:    {insurance_result.get('gap_count', 0)}")
+
+    # ------------------------------------------------------------------
+    # 9. Life event simulation
     # ------------------------------------------------------------------
     print("\nRunning life event simulation...")
     life_event_result = simulate_life_events(profile, assumptions, cashflow)
@@ -137,7 +147,7 @@ def main() -> None:
     print(f"  Ending net worth:   {le_summary.get('ending_net_worth', 0):,.2f}")
 
     # ------------------------------------------------------------------
-    # 9. Financial health scoring
+    # 10. Financial health scoring
     # ------------------------------------------------------------------
     print("\nCalculating financial health score...")
     scoring_result = calculate_scores(
@@ -154,7 +164,23 @@ def main() -> None:
         print(f"    {cat_name:<25} [{bar}] {score:.0f}")
 
     # ------------------------------------------------------------------
-    # 10. Advisor insights
+    # 11. Stress / scenario testing
+    # ------------------------------------------------------------------
+    print("\nRunning stress scenarios...")
+    scenario_result = run_scenarios(
+        profile, assumptions, cashflow, debt_result,
+        mortgage_result, investment_result,
+    )
+    job_loss = scenario_result.get("job_loss", {})
+    print(f"  Job loss runway:    {job_loss.get('months_runway', 0):.1f} months ({job_loss.get('assessment', 'unknown')})")
+
+    rate_shock = scenario_result.get("interest_rate_shock", {})
+    if rate_shock.get("applicable"):
+        worst = rate_shock.get("scenarios", {}).get("plus_3_pct", {})
+        print(f"  Rate +3% payment:   {worst.get('monthly_payment', 0):,.0f}/mo ({('affordable' if worst.get('affordable') else 'unaffordable')})")
+
+    # ------------------------------------------------------------------
+    # 12. Advisor insights
     # ------------------------------------------------------------------
     print("\nGenerating advisor insights...")
     insights_result = generate_insights(
@@ -180,7 +206,7 @@ def main() -> None:
             print(f"     {p['detail']}")
 
     # ------------------------------------------------------------------
-    # 11. Assemble and save report
+    # 13. Assemble and save report
     # ------------------------------------------------------------------
     print(f"\n{'=' * 60}")
     output_path = project_root / "outputs" / "report.json"
@@ -196,6 +222,8 @@ def main() -> None:
         life_events=life_event_result,
         scoring=scoring_result,
         insights=insights_result,
+        insurance=insurance_result,
+        scenarios=scenario_result,
     )
 
     saved_path = save_report(report, output_path)

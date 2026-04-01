@@ -31,6 +31,25 @@ tax:
   additional_rate: 0.45
   national_insurance_rate: 0.08   # employee NI above threshold
 
+stamp_duty:
+  first_time_buyer:
+    - { threshold: 425000, rate: 0.00 }
+    - { threshold: 625000, rate: 0.05 }
+  standard:
+    - { threshold: 250000, rate: 0.00 }
+    - { threshold: 925000, rate: 0.05 }
+    - { threshold: 1500000, rate: 0.10 }
+    - { threshold: 99999999, rate: 0.12 }
+
+ltv_rate_tiers:
+  # Indicative rate adjustments by LTV band (basis points above base)
+  - { max_ltv: 0.60, rate_adjustment: -0.005 }   # 60% LTV: -0.5% (best rates)
+  - { max_ltv: 0.75, rate_adjustment: 0.000 }     # 75% LTV: base rate
+  - { max_ltv: 0.80, rate_adjustment: 0.003 }     # 80% LTV: +0.3%
+  - { max_ltv: 0.85, rate_adjustment: 0.005 }     # 85% LTV: +0.5%
+  - { max_ltv: 0.90, rate_adjustment: 0.010 }     # 90% LTV: +1.0%
+  - { max_ltv: 0.95, rate_adjustment: 0.015 }     # 95% LTV: +1.5%
+
 mortgage:
   income_multiple_single: 4.5
   income_multiple_joint: 4.0
@@ -47,6 +66,18 @@ debt:
   high_interest_threshold: 0.10   # above this = high interest
   moderate_interest_threshold: 0.05
 
+student_loans:
+  plan_2:
+    repayment_threshold: 27295    # annual income threshold (2024-25)
+    repayment_rate: 0.09          # 9% of income above threshold
+    interest_rate: 0.065          # RPI + up to 3% (income-dependent)
+    write_off_years: 30           # written off 30 years after first repayment
+  plan_3:
+    repayment_threshold: 21000    # annual income threshold (2024-25)
+    repayment_rate: 0.06          # 6% of income above threshold
+    interest_rate: 0.065          # RPI + 3%
+    write_off_years: 30           # written off 30 years after first April following graduation
+
 scoring:
   weights:
     savings_rate: 0.20
@@ -56,6 +87,13 @@ scoring:
     goal_progress: 0.15
     investment_diversification: 0.10
     mortgage_readiness: 0.10
+
+state_pension:
+  full_annual_amount: 11502       # full new state pension 2024-25
+  age: 67                         # current state pension age (rising to 68)
+  qualifying_years_full: 35       # years of NI contributions for full amount
+  qualifying_years_min: 10        # minimum years for any state pension
+  triple_lock_growth: 0.035       # assumed annual growth (2.5%, CPI, or earnings)
 
 life_events:
   default_projection_years: 10

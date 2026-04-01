@@ -22,12 +22,15 @@ def analyse_goals(profile: dict, assumptions: dict, cashflow: dict) -> dict[str,
     - Determine required monthly saving to hit deadline
     - Classify feasibility given available surplus
     - Factor in inflation where applicable
+    - Model LISA bonus for property goals
     - Suggest allocation of surplus across goals by priority
     """
     goals = profile.get("goals", [])
     sav = profile.get("savings", {})
+    personal = profile.get("personal", {})
     surplus_monthly = cashflow.get("surplus", {}).get("monthly", 0)
     inflation = assumptions.get("inflation", {}).get("general", 0.03)
+    age = personal.get("age", 30)
 
     if not goals:
         return {"goals": [], "summary": _empty_summary()}
@@ -36,8 +39,9 @@ def analyse_goals(profile: dict, assumptions: dict, cashflow: dict) -> dict[str,
     # 1. Analyse each goal independently
     # ------------------------------------------------------------------
     analyses = []
+    lisa_balance = sav.get("lisa_balance", 0)
     for g in goals:
-        a = _analyse_single_goal(g, sav, inflation)
+        a = _analyse_single_goal(g, sav, inflation, lisa_balance, age)
         analyses.append(a)
 
     # ------------------------------------------------------------------
@@ -81,13 +85,17 @@ def analyse_goals(profile: dict, assumptions: dict, cashflow: dict) -> dict[str,
 # Single goal analysis
 # ---------------------------------------------------------------------------
 
-def _analyse_single_goal(goal: dict, savings: dict, inflation: float) -> dict:
-    """Analyse feasibility of a single goal."""
+def _analyse_single_goal(
+    goal: dict, savings: dict, inflation: float,
+    lisa_balance: float = 0, age: int = 30,
+) -> dict:
+    """Analyse feasibility of a single goal, including LISA bonus for property."""
     name = goal.get("name", "Unnamed")
     target = goal.get("target_amount", 0)
     deadline_years = goal.get("deadline_years", 0)
     priority = goal.get("priority", "medium")
     category = goal.get("category", "general")
+    property_price = goal.get("property_target_price", 0)
 
     deadline_months = max(1, deadline_years * 12)
 
@@ -97,13 +105,49 @@ def _analyse_single_goal(goal: dict, savings: dict, inflation: float) -> dict:
     # Determine current progress toward this goal
     current_savings = _estimate_current_progress(goal, savings)
 
+    # LISA bonus projection for property goals
+    lisa_info = None
+    if category == "property" and lisa_balance > 0 and age < 40:
+        lisa_annual_max = 4000
+        lisa_bonus_rate = 0.25
+        # Project future LISA bonuses over deadline period
+        years_can_contribute = min(deadline_years, 40 - age)
+        projected_bonuses = years_can_contribute * (lisa_annual_max * lisa_bonus_rate)
+        projected_lisa_contributions = years_can_contribute * lisa_annual_max
+        projected_lisa_total = lisa_balance + projected_lisa_contributions + projected_bonuses
+
+        # Add projected LISA growth to current progress
+        current_savings += projected_bonuses  # bonus is free money on top
+
+        # Warn if property exceeds LISA limit
+        lisa_property_limit = 450000
+        lisa_eligible = property_price <= lisa_property_limit if property_price > 0 else True
+
+        lisa_info = {
+            "current_balance": round(lisa_balance, 2),
+            "projected_bonuses": round(projected_bonuses, 2),
+            "projected_contributions": round(projected_lisa_contributions, 2),
+            "projected_total_at_deadline": round(projected_lisa_total, 2),
+            "property_eligible": lisa_eligible,
+            "property_limit": lisa_property_limit,
+            "warning": (
+                f"Property target (£{property_price:,.0f}) is at the LISA limit of £{lisa_property_limit:,.0f}. "
+                f"If the price exceeds this, LISA funds cannot be used penalty-free."
+                if property_price >= lisa_property_limit * 0.95 and lisa_eligible
+                else f"Property target (£{property_price:,.0f}) exceeds the LISA limit of £{lisa_property_limit:,.0f}. "
+                     f"LISA withdrawal would incur a 25% penalty, losing the bonus and 6.25% of your contributions."
+                if not lisa_eligible
+                else None
+            ),
+        }
+
     remaining_gap = max(0, inflation_adjusted_target - current_savings)
     progress_pct = (current_savings / inflation_adjusted_target * 100) if inflation_adjusted_target > 0 else 0
 
     # Required monthly saving to close the gap
     required_monthly = remaining_gap / deadline_months if deadline_months > 0 else remaining_gap
 
-    return {
+    result = {
         "name": name,
         "category": category,
         "priority": priority,
@@ -119,6 +163,11 @@ def _analyse_single_goal(goal: dict, savings: dict, inflation: float) -> dict:
         "allocated_monthly": 0,
         "feasibility_with_allocation": "pending",
     }
+
+    if lisa_info:
+        result["lisa_projection"] = lisa_info
+
+    return result
 
 
 def _estimate_current_progress(goal: dict, savings: dict) -> float:

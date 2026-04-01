@@ -25,6 +25,8 @@ def assemble_report(
     life_events: dict,
     scoring: dict,
     insights: dict,
+    insurance: dict | None = None,
+    scenarios: dict | None = None,
 ) -> dict[str, Any]:
     """
     Assemble all analysis results into the final report structure.
@@ -35,7 +37,7 @@ def assemble_report(
         "meta": {
             "report_type": "GroundTruth Financial Health Report",
             "generated_at": datetime.now(timezone.utc).isoformat(),
-            "engine_version": "1.0.0",
+            "engine_version": "2.0.0",
             "profile_name": personal.get("name", "Unknown"),
             "profile_age": personal.get("age"),
         },
@@ -52,6 +54,8 @@ def assemble_report(
         "investments": investment_analysis,
         "mortgage": mortgage_analysis,
         "life_events": life_events,
+        "insurance": insurance,
+        "stress_scenarios": scenarios,
         "advisor_insights": insights,
     }
 

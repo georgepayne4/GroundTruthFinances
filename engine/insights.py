@@ -28,12 +28,15 @@ def generate_insights(
     - Executive summary
     - Top priorities (ordered)
     - Category-specific commentary
+    - Goal-event conflict warnings
     - Risk warnings
     - Positive reinforcements
     - Next steps
     """
     personal = profile.get("personal", {})
     name = personal.get("name", "Client")
+    conflicts = _detect_goal_event_conflicts(profile, cashflow, life_events)
+    tax_opts = _tax_optimisation_insights(profile, assumptions, cashflow)
 
     insights: dict[str, Any] = {
         "executive_summary": _executive_summary(name, scoring, cashflow, profile),
@@ -44,6 +47,8 @@ def generate_insights(
         "investment_insights": _investment_insights(investment_analysis, personal),
         "mortgage_insights": _mortgage_insights(mortgage_analysis),
         "life_event_insights": _life_event_insights(life_events),
+        "goal_event_conflicts": conflicts,
+        "tax_optimisation": tax_opts,
         "risk_warnings": _risk_warnings(profile, cashflow, debt_analysis, scoring),
         "positive_reinforcements": _positive_reinforcements(cashflow, debt_analysis, scoring, profile),
         "recommended_next_steps": _next_steps(scoring, debt_analysis, goal_analysis, mortgage_analysis),
@@ -262,10 +267,23 @@ def _debt_insights(debt_analysis: dict) -> list[str]:
                 f"top repayment priority. Consider a 0% balance transfer card to freeze interest while repaying."
             )
         if d["type"] in ("student_loan", "student_loan_postgrad"):
-            insights.append(
-                f"Student loan '{d['name']}' repayment is income-contingent and relatively low-rate. "
-                f"Do not prioritise overpaying this above higher-interest debts."
-            )
+            written_off = d.get("will_be_written_off", False)
+            monthly = d.get("minimum_payment_monthly", 0)
+            threshold = d.get("repayment_threshold", 0)
+            if written_off:
+                amount = d.get("amount_written_off", 0)
+                write_off_age = d.get("write_off_age")
+                insights.append(
+                    f"'{d['name']}' is projected to be written off with {amount:,.0f} remaining "
+                    f"(around age {write_off_age}). Do NOT overpay — extra payments would be wasted "
+                    f"money since the balance will be forgiven regardless."
+                )
+            else:
+                insights.append(
+                    f"'{d['name']}' will be repaid in full at {monthly:,.0f}/month "
+                    f"(income-contingent: deducted automatically above {threshold:,.0f}/year). "
+                    f"Overpaying is generally not recommended unless you have no higher-priority uses for the money."
+                )
 
     return insights
 
@@ -454,6 +472,255 @@ def _life_event_insights(life_events: dict) -> list[str]:
             )
 
     return insights
+
+
+# ---------------------------------------------------------------------------
+# Tax optimisation insights
+# ---------------------------------------------------------------------------
+
+def _tax_optimisation_insights(profile: dict, assumptions: dict, cashflow: dict) -> list[dict]:
+    """
+    Identify tax planning opportunities with estimated savings.
+    """
+    opportunities = []
+    inc = profile.get("income", {})
+    sav = profile.get("savings", {})
+    personal = profile.get("personal", {})
+    tax_cfg = assumptions.get("tax", {})
+
+    primary_gross = inc.get("primary_gross_annual", 0)
+    partner_gross = inc.get("partner_gross_annual", 0)
+    personal_allowance = tax_cfg.get("personal_allowance", 12570)
+    basic_threshold = tax_cfg.get("basic_threshold", 50270)
+    higher_rate = tax_cfg.get("higher_rate", 0.40)
+    basic_rate = tax_cfg.get("basic_rate", 0.20)
+    age = personal.get("age", 30)
+
+    # 1. Pension contribution tax relief
+    personal_pct = sav.get("pension_personal_contribution_pct", 0)
+    personal_contribution = primary_gross * personal_pct
+    if primary_gross > basic_threshold:
+        # Higher-rate taxpayer — pension contributions get 40% relief
+        income_above_basic = primary_gross - basic_threshold
+        if personal_contribution < income_above_basic:
+            additional_possible = income_above_basic - personal_contribution
+            tax_saving = additional_possible * (higher_rate - basic_rate)
+            opportunities.append({
+                "type": "pension_relief",
+                "title": "Increase pension contributions for higher-rate tax relief",
+                "detail": (
+                    f"You earn £{income_above_basic:,.0f} above the basic rate threshold. "
+                    f"Increasing pension contributions by up to £{additional_possible:,.0f}/year "
+                    f"would save £{tax_saving:,.0f}/year in tax (40% relief vs 20%)."
+                ),
+                "estimated_annual_saving": round(tax_saving, 2),
+                "priority": "high",
+            })
+
+    # 2. Salary sacrifice benefit
+    if personal_pct > 0:
+        ni_rate = tax_cfg.get("national_insurance_rate", 0.08)
+        ni_saving = personal_contribution * ni_rate
+        opportunities.append({
+            "type": "salary_sacrifice",
+            "title": "Consider salary sacrifice for pension contributions",
+            "detail": (
+                f"If your employer offers salary sacrifice, converting your "
+                f"£{personal_contribution:,.0f}/year pension contribution would save "
+                f"£{ni_saving:,.0f}/year in National Insurance (both you and your employer). "
+                f"Check with HR if this is available."
+            ),
+            "estimated_annual_saving": round(ni_saving, 2),
+            "priority": "medium",
+        })
+
+    # 3. ISA allowance utilisation
+    isa_balance = sav.get("isa_balance", 0)
+    lisa_balance = sav.get("lisa_balance", 0)
+    isa_annual_limit = 20000
+    opportunities.append({
+        "type": "isa_allowance",
+        "title": "Maximise annual ISA allowance",
+        "detail": (
+            f"You can shelter £{isa_annual_limit:,.0f}/year from tax in ISAs. "
+            f"Current ISA balance: £{isa_balance:,.0f}. All investment growth and income "
+            f"within an ISA is completely tax-free. Prioritise ISA over general investment accounts."
+        ),
+        "estimated_annual_saving": None,
+        "priority": "medium",
+    })
+
+    # 4. LISA bonus (if under 40 and has LISA)
+    if lisa_balance > 0 and age < 40:
+        opportunities.append({
+            "type": "lisa_bonus",
+            "title": "Maximise LISA contributions for 25% government bonus",
+            "detail": (
+                f"Contribute up to £4,000/year to your LISA for a £1,000 government bonus (25%). "
+                f"This is free money — ensure you max this out each tax year. "
+                f"Current LISA balance: £{lisa_balance:,.0f}."
+            ),
+            "estimated_annual_saving": 1000,
+            "priority": "high",
+        })
+
+    # 5. Marriage allowance
+    if partner_gross > 0 and partner_gross <= personal_allowance and primary_gross <= basic_threshold:
+        marriage_allowance_value = 252
+        opportunities.append({
+            "type": "marriage_allowance",
+            "title": "Claim Marriage Allowance",
+            "detail": (
+                f"Your partner earns below the personal allowance (£{personal_allowance:,.0f}). "
+                f"They can transfer £1,260 of their allowance to you, saving £{marriage_allowance_value}/year in tax. "
+                f"Apply online at HMRC — this can be backdated up to 4 years."
+            ),
+            "estimated_annual_saving": marriage_allowance_value,
+            "priority": "low",
+        })
+
+    # 6. Capital gains tax allowance
+    other_investments = sav.get("other_investments", 0)
+    if other_investments > 0 or isa_balance > 10000:
+        cgt_allowance = 6000
+        opportunities.append({
+            "type": "cgt_allowance",
+            "title": "Use annual capital gains tax allowance",
+            "detail": (
+                f"You have a £{cgt_allowance:,.0f} annual CGT exemption. If you hold investments "
+                f"outside ISAs/pensions with unrealised gains, consider selling and rebuying within "
+                f"an ISA wrapper (known as 'Bed and ISA') to crystallise gains tax-free."
+            ),
+            "estimated_annual_saving": None,
+            "priority": "low",
+        })
+
+    total_quantifiable = sum(
+        o["estimated_annual_saving"] for o in opportunities
+        if o["estimated_annual_saving"] is not None
+    )
+
+    return {
+        "opportunities": opportunities,
+        "total_estimated_annual_saving": round(total_quantifiable, 2),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Goal-event conflict detection
+# ---------------------------------------------------------------------------
+
+def _detect_goal_event_conflicts(profile: dict, cashflow: dict, life_events_result: dict) -> list[dict]:
+    """
+    Cross-reference goals and life events to detect:
+    1. Back-to-back large expenses that may be infeasible
+    2. Emergency fund depletion after major events
+    3. Goal sequencing issues (safety net should come before discretionary)
+    4. Cumulative outflows exceeding projected savings
+    """
+    conflicts = []
+    goals = profile.get("goals", [])
+    events = profile.get("life_events", [])
+    timeline = life_events_result.get("timeline", [])
+    surplus_monthly = cashflow.get("surplus", {}).get("monthly", 0)
+    emergency_fund = profile.get("savings", {}).get("emergency_fund", 0)
+    monthly_expenses = cashflow.get("expenses", {}).get("total_monthly", 0)
+
+    if not goals or not events:
+        return conflicts
+
+    # Build year-by-year outflow map from life events
+    event_outflows: dict[int, float] = {}
+    event_descriptions: dict[int, list[str]] = {}
+    for ev in events:
+        yr = ev.get("year_offset", 0)
+        one_off = ev.get("one_off_expense", 0)
+        if one_off > 0:
+            event_outflows[yr] = event_outflows.get(yr, 0) + one_off
+            event_descriptions.setdefault(yr, []).append(ev.get("description", "Unknown event"))
+
+    # 1. Detect back-to-back large expenses
+    sorted_years = sorted(event_outflows.keys())
+    for i, yr in enumerate(sorted_years):
+        if i + 1 < len(sorted_years):
+            next_yr = sorted_years[i + 1]
+            if next_yr - yr <= 1:
+                combined = event_outflows[yr] + event_outflows[next_yr]
+                annual_surplus = surplus_monthly * 12
+                if combined > annual_surplus * 2:
+                    conflicts.append({
+                        "type": "back_to_back_expenses",
+                        "severity": "high",
+                        "years": [yr, next_yr],
+                        "total_outflow": round(combined, 2),
+                        "description": (
+                            f"Large expenses in consecutive years: "
+                            f"Year {yr} ({', '.join(event_descriptions.get(yr, []))}: £{event_outflows[yr]:,.0f}) "
+                            f"and Year {next_yr} ({', '.join(event_descriptions.get(next_yr, []))}: £{event_outflows[next_yr]:,.0f}). "
+                            f"Combined £{combined:,.0f} outflow exceeds what your surplus can rebuild between events."
+                        ),
+                        "suggestion": "Consider spacing these events further apart or building a larger buffer beforehand.",
+                    })
+
+    # 2. Detect emergency fund depletion after major events
+    for t in timeline:
+        yr = t["year"]
+        if t.get("events") and t["liquid_savings"] < monthly_expenses * 3:
+            conflicts.append({
+                "type": "emergency_fund_depleted",
+                "severity": "high",
+                "year": yr,
+                "liquid_savings": round(t["liquid_savings"], 2),
+                "description": (
+                    f"After Year {yr} events, projected liquid savings (£{t['liquid_savings']:,.0f}) "
+                    f"fall below 3 months of expenses (£{monthly_expenses * 3:,.0f}). "
+                    f"You would have no safety net."
+                ),
+                "suggestion": "Build additional reserves before this event or reduce the outflow.",
+            })
+
+    # 3. Goal sequencing: safety_net goals should complete before discretionary spending
+    safety_goals = [g for g in goals if g.get("category") == "safety_net"]
+    discretionary_events = [e for e in events if e.get("one_off_expense", 0) > 5000]
+    for sg in safety_goals:
+        sg_deadline = sg.get("deadline_years", 0)
+        for ev in discretionary_events:
+            ev_year = ev.get("year_offset", 0)
+            if ev_year <= sg_deadline:
+                conflicts.append({
+                    "type": "sequencing_risk",
+                    "severity": "moderate",
+                    "description": (
+                        f"'{sg['name']}' (deadline: Year {sg_deadline}) should ideally complete before "
+                        f"'{ev.get('description', 'a major expense')}' (Year {ev_year}). "
+                        f"Spending £{ev.get('one_off_expense', 0):,.0f} before your safety net is in place increases risk."
+                    ),
+                    "suggestion": f"Prioritise completing '{sg['name']}' before committing to the Year {ev_year} expense.",
+                })
+
+    # 4. Cumulative outflows vs projected savings capacity
+    total_planned_outflows = sum(event_outflows.values())
+    goal_outflows = sum(g.get("target_amount", 0) for g in goals)
+    years_covered = max(sorted_years) if sorted_years else 1
+    total_savings_capacity = surplus_monthly * 12 * years_covered
+    liquid_assets = profile.get("savings", {}).get("_total_liquid", 0)
+    total_capacity = total_savings_capacity + liquid_assets
+
+    if total_planned_outflows + goal_outflows > total_capacity * 1.1:
+        shortfall = (total_planned_outflows + goal_outflows) - total_capacity
+        conflicts.append({
+            "type": "aggregate_infeasibility",
+            "severity": "critical",
+            "description": (
+                f"Total planned outflows (events: £{total_planned_outflows:,.0f} + goals: £{goal_outflows:,.0f} "
+                f"= £{total_planned_outflows + goal_outflows:,.0f}) exceed your projected capacity "
+                f"(savings: £{total_savings_capacity:,.0f} + current liquid: £{liquid_assets:,.0f} "
+                f"= £{total_capacity:,.0f}) by £{shortfall:,.0f}."
+            ),
+            "suggestion": "Reduce goal targets, extend timelines, increase income, or defer some life events.",
+        })
+
+    return conflicts
 
 
 # ---------------------------------------------------------------------------

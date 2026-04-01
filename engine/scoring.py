@@ -37,7 +37,8 @@ def calculate_scores(
     categories = {}
 
     categories["savings_rate"] = _score_savings_rate(cashflow, weights.get("savings_rate", 0.20))
-    categories["debt_health"] = _score_debt_health(debt_analysis, assumptions, weights.get("debt_health", 0.20))
+    age = profile.get("personal", {}).get("age", 30)
+    categories["debt_health"] = _score_debt_health(debt_analysis, assumptions, weights.get("debt_health", 0.20), age)
     categories["emergency_fund"] = _score_emergency_fund(profile, assumptions, weights.get("emergency_fund", 0.15))
     categories["net_worth_trend"] = _score_net_worth(profile, cashflow, weights.get("net_worth_trend", 0.10))
     categories["goal_progress"] = _score_goals(goal_analysis, weights.get("goal_progress", 0.15))
@@ -102,7 +103,7 @@ def _score_savings_rate(cashflow: dict, weight: float) -> dict:
     }
 
 
-def _score_debt_health(debt_analysis: dict, assumptions: dict, weight: float) -> dict:
+def _score_debt_health(debt_analysis: dict, assumptions: dict, weight: float, age: int = 30) -> dict:
     """
     Score based on:
     - Presence of high-interest debt (heavy penalty)
@@ -141,14 +142,15 @@ def _score_debt_health(debt_analysis: dict, assumptions: dict, weight: float) ->
     elif dti > 10:
         score -= 5
 
-    # Payoff timeline
+    # Payoff timeline (less penalised for young people with student loans)
     months = summary.get("longest_payoff_months", 0)
+    payoff_penalty_factor = 1.0 if age >= 40 else 0.5 if age >= 30 else 0.3
     if months > 120:
-        score -= 15
+        score -= 15 * payoff_penalty_factor
     elif months > 60:
-        score -= 10
+        score -= 10 * payoff_penalty_factor
     elif months > 36:
-        score -= 5
+        score -= 5 * payoff_penalty_factor
 
     return {
         "score": round(min(100, max(0, score)), 1),
@@ -199,28 +201,65 @@ def _score_emergency_fund(profile: dict, assumptions: dict, weight: float) -> di
 
 def _score_net_worth(profile: dict, cashflow: dict, weight: float) -> dict:
     """
-    Score based on net worth relative to income and direction.
-    Negative net worth → low score
-    Positive and growing → high score
+    Score based on net worth relative to income, direction, AND age.
+
+    Age-adjusted benchmarks (multiples of gross income):
+      Under 30: 0x is normal, 0.5x is good
+      30-35: 0.5x target, 1x is good
+      35-40: 1x target, 2x is good
+      40-45: 2x target, 3x is good
+      45-50: 3x target, 5x is good
+      50-55: 5x target, 7x is good
+      55+:   7x target, 10x is good
     """
     nw = profile.get("_net_worth", 0)
+    age = profile.get("personal", {}).get("age", 30)
     gross_annual = cashflow.get("income", {}).get("total_gross_annual", 1)
     surplus = cashflow.get("surplus", {}).get("annual", 0)
 
     nw_ratio = nw / gross_annual if gross_annual > 0 else 0
     direction = "growing" if surplus > 0 else "shrinking"
 
-    if nw < 0:
-        # Negative net worth — score based on how negative
-        score = max(0, 30 + nw_ratio * 30)  # deeply negative = 0, slightly negative ≈ 25
-    elif nw_ratio < 0.5:
-        score = 30 + nw_ratio * 40  # 30-50
-    elif nw_ratio < 1.0:
-        score = 50 + (nw_ratio - 0.5) * 30  # 50-65
-    elif nw_ratio < 2.0:
-        score = 65 + (nw_ratio - 1.0) * 15  # 65-80
+    # Age-adjusted target (expected net worth multiple of income)
+    if age < 30:
+        target_ratio = 0.0
+        good_ratio = 0.5
+    elif age < 35:
+        target_ratio = 0.5
+        good_ratio = 1.0
+    elif age < 40:
+        target_ratio = 1.0
+        good_ratio = 2.0
+    elif age < 45:
+        target_ratio = 2.0
+        good_ratio = 3.0
+    elif age < 50:
+        target_ratio = 3.0
+        good_ratio = 5.0
+    elif age < 55:
+        target_ratio = 5.0
+        good_ratio = 7.0
     else:
-        score = min(100, 80 + (nw_ratio - 2.0) * 5)
+        target_ratio = 7.0
+        good_ratio = 10.0
+
+    if nw < 0:
+        # Negative net worth — less concerning for under-30s (student loans)
+        if age < 30:
+            score = max(10, 40 + nw_ratio * 20)
+        else:
+            score = max(0, 30 + nw_ratio * 30)
+    elif nw_ratio >= good_ratio:
+        score = 90
+    elif nw_ratio >= target_ratio:
+        progress = (nw_ratio - target_ratio) / max(0.01, good_ratio - target_ratio)
+        score = 65 + progress * 25  # 65-90
+    elif target_ratio > 0:
+        progress = nw_ratio / target_ratio
+        score = 30 + progress * 35  # 30-65
+    else:
+        # Under 30, any positive net worth is good
+        score = min(80, 50 + nw_ratio * 30)
 
     # Bonus/penalty for direction
     if surplus > 0:
@@ -228,11 +267,13 @@ def _score_net_worth(profile: dict, cashflow: dict, weight: float) -> dict:
     elif surplus < 0:
         score = max(0, score - 10)
 
+    benchmark_text = f"Age {age} target: {target_ratio:.1f}x income, good: {good_ratio:.1f}x income"
+
     return {
         "score": round(min(100, max(0, score)), 1),
         "weight": weight,
         "detail": f"Net worth: {nw:,.0f} ({nw_ratio:.1f}x income), trend: {direction}",
-        "benchmark": "Target: net worth > 1x annual income, trending upward",
+        "benchmark": benchmark_text,
     }
 
 

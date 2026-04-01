@@ -126,7 +126,40 @@ def analyse_investments(profile: dict, assumptions: dict, cashflow: dict) -> dic
     # Estimate annual pension income (4% safe withdrawal rate)
     safe_withdrawal_rate = 0.04
     estimated_annual_pension_income = pension_at_retirement_real * safe_withdrawal_rate
+
+    # State pension projection
+    sp_cfg = assumptions.get("state_pension", {})
+    state_pension_annual = sp_cfg.get("full_annual_amount", 11502)
+    state_pension_age = sp_cfg.get("age", 67)
+    qualifying_years_needed = sp_cfg.get("qualifying_years_full", 35)
+    qualifying_years_min = sp_cfg.get("qualifying_years_min", 10)
+    triple_lock_growth = sp_cfg.get("triple_lock_growth", 0.035)
+
+    # Estimate qualifying years: assume working since age 21
+    estimated_qualifying_years = min(qualifying_years_needed, max(0, age - 21))
+    years_to_state_pension = max(0, state_pension_age - age)
+    projected_qualifying_years = min(qualifying_years_needed, estimated_qualifying_years + years_to_state_pension)
+
+    if projected_qualifying_years >= qualifying_years_needed:
+        state_pension_fraction = 1.0
+    elif projected_qualifying_years >= qualifying_years_min:
+        state_pension_fraction = projected_qualifying_years / qualifying_years_needed
+    else:
+        state_pension_fraction = 0.0
+
+    # Project state pension value at state pension age (triple lock growth)
+    state_pension_at_retirement = (
+        state_pension_annual * state_pension_fraction * ((1 + triple_lock_growth) ** years_to_state_pension)
+    )
+    state_pension_at_retirement_real = state_pension_at_retirement / ((1 + inflation) ** years_to_state_pension)
+
+    # Combined retirement income
+    total_retirement_income = estimated_annual_pension_income + state_pension_at_retirement_real
     pension_replacement_ratio = (
+        total_retirement_income / primary_gross * 100
+        if primary_gross > 0 else 0
+    )
+    private_only_replacement = (
         estimated_annual_pension_income / primary_gross * 100
         if primary_gross > 0 else 0
     )
@@ -176,6 +209,15 @@ def analyse_investments(profile: dict, assumptions: dict, cashflow: dict) -> dic
             "projected_at_retirement_nominal": round(pension_at_retirement, 2),
             "projected_at_retirement_real": round(pension_at_retirement_real, 2),
             "estimated_annual_income_real": round(estimated_annual_pension_income, 2),
+            "private_pension_replacement_pct": round(private_only_replacement, 1),
+            "state_pension": {
+                "full_annual_amount": state_pension_annual,
+                "state_pension_age": state_pension_age,
+                "estimated_qualifying_years": projected_qualifying_years,
+                "fraction_of_full": round(state_pension_fraction, 2),
+                "projected_annual_real": round(state_pension_at_retirement_real, 2),
+            },
+            "total_retirement_income_real": round(total_retirement_income, 2),
             "income_replacement_ratio_pct": round(pension_replacement_ratio, 1),
             "years_in_retirement": years_in_retirement,
             "fund_longevity_years": round(pension_lasts_years, 1),

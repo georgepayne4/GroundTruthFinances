@@ -81,14 +81,23 @@ def analyse_mortgage(profile: dict, assumptions: dict, cashflow: dict, debt_anal
     )
 
     # ------------------------------------------------------------------
-    # 3. Mortgage amount and repayment estimates
+    # 3. LTV analysis and rate adjustment
     # ------------------------------------------------------------------
     mortgage_amount = target_value - required_deposit
     can_borrow_enough = adjusted_borrowing >= mortgage_amount
 
-    # Estimate current market rate (mid-point between conservative and stress)
+    current_ltv = mortgage_amount / target_value if target_value > 0 else 1.0
+    ltv_pct = current_ltv * 100
+
+    # Estimate rate based on LTV tier
     stress_rate = mort_cfg.get("stress_test_rate", 0.07)
-    estimated_market_rate = stress_rate - 0.02  # rough assumption
+    base_market_rate = stress_rate - 0.02
+    ltv_tiers = assumptions.get("ltv_rate_tiers", [])
+    ltv_adjustment = _get_ltv_rate_adjustment(current_ltv, ltv_tiers)
+    estimated_market_rate = base_market_rate + ltv_adjustment
+
+    # Find next better LTV band
+    ltv_analysis = _analyse_ltv_bands(target_value, available_for_deposit, emergency_fund, ltv_tiers, base_market_rate, term_years)
 
     monthly_repayment_market = _monthly_repayment(mortgage_amount, estimated_market_rate, term_years)
     monthly_repayment_stress = _monthly_repayment(mortgage_amount, stress_rate, term_years)
@@ -114,7 +123,14 @@ def analyse_mortgage(profile: dict, assumptions: dict, cashflow: dict, debt_anal
     stress_test_passes = stress_affordability_ratio <= 45
 
     # ------------------------------------------------------------------
-    # 5. Blocker identification
+    # 5. Acquisition costs (stamp duty + fees)
+    # ------------------------------------------------------------------
+    first_time_buyer = not profile.get("_owns_property", False)
+    sdlt = _calculate_stamp_duty(target_value, first_time_buyer, assumptions)
+    acquisition_costs = _estimate_acquisition_costs(target_value, mortgage_amount, sdlt, assumptions)
+
+    # ------------------------------------------------------------------
+    # 6. Blocker identification
     # ------------------------------------------------------------------
     blockers = []
     if not can_borrow_enough:
@@ -160,7 +176,7 @@ def analyse_mortgage(profile: dict, assumptions: dict, cashflow: dict, debt_anal
         })
 
     # ------------------------------------------------------------------
-    # 6. Readiness classification
+    # 7. Readiness classification
     # ------------------------------------------------------------------
     if not blockers:
         readiness = "ready"
@@ -174,6 +190,7 @@ def analyse_mortgage(profile: dict, assumptions: dict, cashflow: dict, debt_anal
     return {
         "applicable": True,
         "target_property_value": round(target_value, 2),
+        "first_time_buyer": first_time_buyer,
         "borrowing": {
             "income_used": round(combined_income, 2),
             "income_multiple": income_multiple,
@@ -211,8 +228,158 @@ def analyse_mortgage(profile: dict, assumptions: dict, cashflow: dict, debt_anal
             "affordable": affordable,
             "stress_test_passes": stress_test_passes,
         },
+        "ltv_analysis": {
+            "current_ltv_pct": round(ltv_pct, 1),
+            "rate_adjustment_pct": round(ltv_adjustment * 100, 2),
+            "bands": ltv_analysis,
+        },
+        "acquisition_costs": acquisition_costs,
         "blockers": blockers,
         "readiness": readiness,
+    }
+
+
+# ---------------------------------------------------------------------------
+# LTV-based rate analysis
+# ---------------------------------------------------------------------------
+
+def _get_ltv_rate_adjustment(ltv: float, tiers: list[dict]) -> float:
+    """Get rate adjustment for a given LTV ratio."""
+    for tier in sorted(tiers, key=lambda t: t["max_ltv"]):
+        if ltv <= tier["max_ltv"]:
+            return tier["rate_adjustment"]
+    # Above all tiers — return worst tier adjustment
+    return tiers[-1]["rate_adjustment"] if tiers else 0.0
+
+
+def _analyse_ltv_bands(
+    property_value: float, available_deposit: float, emergency_fund: float,
+    tiers: list[dict], base_rate: float, term_years: int,
+) -> list[dict]:
+    """
+    Show what each LTV band would cost and how much extra deposit is needed.
+    """
+    bands = []
+    for tier in sorted(tiers, key=lambda t: t["max_ltv"]):
+        max_ltv = tier["max_ltv"]
+        deposit_needed = property_value * (1 - max_ltv)
+        mortgage_at_band = property_value * max_ltv
+        rate = base_rate + tier["rate_adjustment"]
+        monthly_payment = _monthly_repayment(mortgage_at_band, rate, term_years)
+        total_interest = (monthly_payment * term_years * 12) - mortgage_at_band
+        extra_deposit_needed = max(0, deposit_needed - available_deposit)
+
+        bands.append({
+            "ltv_pct": round(max_ltv * 100, 0),
+            "deposit_required": round(deposit_needed, 2),
+            "extra_deposit_needed": round(extra_deposit_needed, 2),
+            "mortgage_amount": round(mortgage_at_band, 2),
+            "rate_pct": round(rate * 100, 2),
+            "monthly_payment": round(monthly_payment, 2),
+            "total_interest": round(total_interest, 2),
+            "achievable": available_deposit >= deposit_needed,
+        })
+
+    return bands
+
+
+# ---------------------------------------------------------------------------
+# Stamp Duty Land Tax (SDLT)
+# ---------------------------------------------------------------------------
+
+def _calculate_stamp_duty(property_value: float, first_time_buyer: bool, assumptions: dict) -> dict:
+    """
+    Calculate UK Stamp Duty Land Tax.
+
+    First-time buyer rates (property up to £625k):
+        £0 – £425,000:     0%
+        £425,001 – £625,000: 5%
+        Above £625,000: standard rates apply (FTB relief lost)
+
+    Standard rates:
+        £0 – £250,000:       0%
+        £250,001 – £925,000:  5%
+        £925,001 – £1,500,000: 10%
+        Above £1,500,000:     12%
+    """
+    sdlt_cfg = assumptions.get("stamp_duty", {})
+
+    if first_time_buyer and property_value <= 625000:
+        bands = sdlt_cfg.get("first_time_buyer", [
+            {"threshold": 425000, "rate": 0.00},
+            {"threshold": 625000, "rate": 0.05},
+        ])
+        buyer_type = "first_time_buyer"
+    else:
+        bands = sdlt_cfg.get("standard", [
+            {"threshold": 250000, "rate": 0.00},
+            {"threshold": 925000, "rate": 0.05},
+            {"threshold": 1500000, "rate": 0.10},
+            {"threshold": float("inf"), "rate": 0.12},
+        ])
+        buyer_type = "standard"
+
+    tax = 0.0
+    breakdown = []
+    prev_threshold = 0
+
+    for band in bands:
+        band_threshold = band["threshold"]
+        rate = band["rate"]
+        taxable_in_band = max(0, min(property_value, band_threshold) - prev_threshold)
+
+        band_tax = taxable_in_band * rate
+        tax += band_tax
+
+        if taxable_in_band > 0:
+            breakdown.append({
+                "band": f"£{prev_threshold:,.0f} – £{band_threshold:,.0f}",
+                "rate_pct": round(rate * 100, 1),
+                "taxable_amount": round(taxable_in_band, 2),
+                "tax": round(band_tax, 2),
+            })
+
+        prev_threshold = band_threshold
+        if property_value <= band_threshold:
+            break
+
+    return {
+        "buyer_type": buyer_type,
+        "property_value": round(property_value, 2),
+        "total_stamp_duty": round(tax, 2),
+        "effective_rate_pct": round(tax / property_value * 100, 2) if property_value > 0 else 0,
+        "breakdown": breakdown,
+    }
+
+
+def _estimate_acquisition_costs(
+    property_value: float, mortgage_amount: float, sdlt: dict, assumptions: dict,
+) -> dict:
+    """
+    Itemised estimate of total acquisition costs.
+    """
+    stamp_duty = sdlt["total_stamp_duty"]
+
+    # Estimated professional fees
+    solicitor = 1500
+    survey = 500
+    valuation = 350
+    mortgage_arrangement_fee = 1000
+    moving_costs = 1000
+
+    total_fees = solicitor + survey + valuation + mortgage_arrangement_fee + moving_costs
+    total_costs = stamp_duty + total_fees
+
+    return {
+        "stamp_duty": round(stamp_duty, 2),
+        "stamp_duty_detail": sdlt,
+        "solicitor_estimate": solicitor,
+        "survey_estimate": survey,
+        "valuation_fee": valuation,
+        "mortgage_arrangement_fee": mortgage_arrangement_fee,
+        "moving_costs": moving_costs,
+        "total_fees_excl_stamp_duty": total_fees,
+        "total_acquisition_costs": round(total_costs, 2),
     }
 
 
