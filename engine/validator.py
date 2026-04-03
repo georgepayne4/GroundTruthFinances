@@ -52,6 +52,7 @@ def validate_profile(profile: dict, assumptions: dict) -> list[ValidationFlag]:
     flags.extend(_check_goals(profile))
     flags.extend(_check_mortgage(profile, assumptions))
     flags.extend(_check_cross_field_consistency(profile, assumptions))
+    flags.extend(_check_assumptions_staleness(assumptions))
     return flags
 
 
@@ -338,5 +339,33 @@ def _check_cross_field_consistency(profile: dict, assumptions: dict) -> list[Val
         flags.append(ValidationFlag("_cross.pension_adequacy", Severity.WARNING,
                                     f"Pension balance ({pension:,.0f}) is less than one year's gross income at age {age}.",
                                     "Consider increasing pension contributions — the earlier the better."))
+
+    return flags
+
+
+# ---------------------------------------------------------------------------
+# T3-5: Assumptions staleness check
+# ---------------------------------------------------------------------------
+
+def _check_assumptions_staleness(assumptions: dict) -> list[ValidationFlag]:
+    """Warn if assumptions are based on a different tax year."""
+    flags = []
+    effective_to = assumptions.get("effective_to", "")
+    tax_year = assumptions.get("tax_year", "")
+
+    if effective_to:
+        from datetime import date
+        try:
+            end_date = date.fromisoformat(effective_to)
+            today = date.today()
+            if today > end_date:
+                flags.append(ValidationFlag(
+                    "assumptions.tax_year", Severity.WARNING,
+                    f"Assumptions are based on {tax_year} tax year (expired {effective_to}). "
+                    f"Current date suggests a newer tax year -- consider updating assumptions.yaml.",
+                    "Update tax bands, allowances, and limits to the current tax year.",
+                ))
+        except (ValueError, TypeError):
+            pass
 
     return flags

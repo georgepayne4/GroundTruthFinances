@@ -373,7 +373,13 @@ def analyse_investments(profile: dict, assumptions: dict, cashflow: dict) -> dic
         )
 
     # ------------------------------------------------------------------
-    # 14. T2-2: Tax efficiency analysis (CGT, dividends, ISA vs GIA)
+    # 14. T3-3: Rebalancing drift detection
+    # ------------------------------------------------------------------
+    current_alloc = sav.get("current_allocation", {})
+    rebalancing = _rebalancing_analysis(current_alloc, model, total_invested)
+
+    # ------------------------------------------------------------------
+    # 15. T2-2: Tax efficiency analysis (CGT, dividends, ISA vs GIA)
     # ------------------------------------------------------------------
     cgt_cfg = assumptions.get("capital_gains_tax", {})
     div_cfg = assumptions.get("dividend_tax", {})
@@ -455,6 +461,8 @@ def analyse_investments(profile: dict, assumptions: dict, cashflow: dict) -> dic
         result["esg_note"] = esg_note
     if tax_efficiency:
         result["tax_efficiency"] = tax_efficiency
+    if rebalancing:
+        result["rebalancing"] = rebalancing
 
     return result
 
@@ -752,6 +760,92 @@ def _isa_contribution_tracking(sav: dict, isa_cfg: dict = None, lisa_cfg: dict =
         "lisa_contributed_this_year": round(lisa_used, 2),
         "lisa_remaining_allowance": round(lisa_limit - lisa_used, 2),
         "note": "Prioritise filling ISA before using taxable accounts. LISA contributions earn a 25% government bonus.",
+    }
+
+
+# ---------------------------------------------------------------------------
+# T3-3: Rebalancing drift detection
+# ---------------------------------------------------------------------------
+
+def _rebalancing_analysis(
+    current_alloc: dict, model: dict, total_invested: float,
+) -> dict | None:
+    """Detect portfolio drift and calculate rebalancing trades."""
+    if not current_alloc or total_invested <= 0:
+        return None
+
+    target_alloc = model.get("allocation", {})
+    drift_threshold = 5.0  # percentage points
+
+    # Normalize current allocation (could be pcts or decimals)
+    current_sum = sum(current_alloc.values())
+    if current_sum == 0:
+        return None
+
+    # Assume values are percentages (0-100) if sum > 2, else decimals (0-1)
+    norm_factor = 1.0 if current_sum > 2 else 100.0
+
+    # Map current allocation to broad categories
+    # User may provide: equities_pct, bonds_pct, property_pct, cash_pct
+    # Model provides: detailed asset classes
+    # Create broad mappings
+    target_broad = {
+        "equities": sum(v for k, v in target_alloc.items()
+                        if any(eq in k for eq in ("equity", "emerging"))),
+        "bonds": sum(v for k, v in target_alloc.items()
+                     if "bond" in k),
+        "property": sum(v for k, v in target_alloc.items()
+                        if "property" in k),
+        "cash": sum(v for k, v in target_alloc.items()
+                    if "cash" in k),
+    }
+
+    current_broad = {
+        "equities": current_alloc.get("equities_pct", 0) * norm_factor,
+        "bonds": current_alloc.get("bonds_pct", 0) * norm_factor,
+        "property": current_alloc.get("property_pct", 0) * norm_factor,
+        "cash": current_alloc.get("cash_pct", 0) * norm_factor,
+    }
+
+    drifts = []
+    trades = []
+    needs_rebalancing = False
+
+    for asset_class in ["equities", "bonds", "property", "cash"]:
+        target_pct = target_broad.get(asset_class, 0)
+        current_pct = current_broad.get(asset_class, 0)
+        drift = current_pct - target_pct
+
+        drifts.append({
+            "asset_class": asset_class,
+            "current_pct": round(current_pct, 1),
+            "target_pct": round(target_pct, 1),
+            "drift_pct": round(drift, 1),
+            "over_threshold": abs(drift) > drift_threshold,
+        })
+
+        if abs(drift) > drift_threshold:
+            needs_rebalancing = True
+            amount = total_invested * abs(drift) / 100
+            action = "sell" if drift > 0 else "buy"
+            trades.append({
+                "asset_class": asset_class,
+                "action": action,
+                "amount": round(amount, 0),
+                "note": f"{action.capitalize()} {amount:,.0f} of {asset_class} to return to target",
+            })
+
+    return {
+        "drift_threshold_pct": drift_threshold,
+        "needs_rebalancing": needs_rebalancing,
+        "drifts": drifts,
+        "trades": trades if needs_rebalancing else [],
+        "note": (
+            "Rebalance within ISA/pension wrappers (tax-free). "
+            "GIA rebalancing may trigger CGT — use annual exemption."
+            if needs_rebalancing
+            else "Portfolio allocation is within acceptable drift threshold."
+        ),
     }
 
 

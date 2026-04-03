@@ -38,6 +38,7 @@ from engine.scenarios import run_scenarios
 from engine.estate import analyse_estate
 from engine.sensitivity import run_sensitivity
 from engine.report import assemble_report, save_report
+from engine.narrative import generate_narrative
 
 
 def main() -> None:
@@ -329,6 +330,13 @@ def main() -> None:
 
     saved_path = save_report(report, output_path)
     print(f"\nReport saved to: {saved_path}")
+
+    # T3-1: Generate narrative report
+    narrative_path = project_root / "outputs" / "report.md"
+    narrative = generate_narrative(report)
+    narrative_path.parent.mkdir(parents=True, exist_ok=True)
+    narrative_path.write_text(narrative, encoding="utf-8")
+    print(f"Narrative report: {narrative_path}")
     print("Done.")
 
 

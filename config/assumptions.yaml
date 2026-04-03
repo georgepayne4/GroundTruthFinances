@@ -4,6 +4,11 @@
 # Sources: historical averages, UK/US financial planning norms.
 # ==============================================================================
 
+# T3-5: Tax year and policy metadata
+tax_year: "2025/26"
+effective_from: "2025-04-06"
+effective_to: "2026-04-05"
+
 inflation:
   general: 0.03          # 3% general inflation
   education: 0.05        # 5% education cost inflation

@@ -280,7 +280,35 @@ def _spending_benchmark_analysis(
             "above_benchmark": delta > 0,
         })
 
+    # T3-4: Rank by overspend and add behavioural nudges
+    over_benchmark = sorted(
+        [c for c in comparisons if c["above_benchmark"]],
+        key=lambda x: x["delta_monthly"],
+        reverse=True,
+    )
+
+    nudges = []
+    for ob in over_benchmark[:3]:
+        cat = ob["category"]
+        delta = ob["delta_monthly"]
+        actual_pct = ob["actual_pct_of_net"]
+        bench_pct = ob["benchmark_pct_of_net"]
+        nudges.append({
+            "category": cat,
+            "overspend_monthly": round(delta, 2),
+            "overspend_annual": round(delta * 12, 2),
+            "message": (
+                f"Your {cat} costs are {actual_pct:.0f}% of net income vs {bench_pct:.0f}% UK average. "
+                f"Reducing to benchmark saves {delta:,.0f}/month ({delta * 12:,.0f}/year)."
+            ),
+        })
+
+    # Cumulative impact if top 3 reduced to benchmark
+    top3_saving = sum(ob["delta_monthly"] for ob in over_benchmark[:3])
+
     return {
         "comparisons": comparisons,
         "total_potential_monthly_saving": round(total_potential_saving, 2),
+        "top_overspend_categories": nudges,
+        "top3_combined_saving_monthly": round(top3_saving, 2),
     }
