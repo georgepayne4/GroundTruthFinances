@@ -234,7 +234,7 @@ def main() -> None:
     # 12. Estate analysis
     # ------------------------------------------------------------------
     print("\nRunning estate analysis...")
-    estate_result = analyse_estate(profile, assumptions, investment_result, mortgage_result)
+    estate_result = analyse_estate(profile, assumptions, investment_result, mortgage_result, cashflow)
     print(f"  Projected estate:   {estate_result.get('projected_estate_value', 0):,.0f}")
     print(f"  IHT liability:      {estate_result.get('iht_liability', 0):,.0f}")
     planning = estate_result.get("estate_planning", {})

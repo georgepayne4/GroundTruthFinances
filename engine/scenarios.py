@@ -25,20 +25,22 @@ def run_scenarios(
     investment_analysis: dict,
 ) -> dict[str, Any]:
     """Run all stress scenarios and return results."""
+    scn_cfg = assumptions.get("scenarios", {})
     return {
-        "job_loss": _job_loss_scenario(profile, cashflow),
-        "interest_rate_shock": _rate_shock_scenario(profile, assumptions, cashflow, mortgage_analysis),
-        "market_downturn": _market_downturn_scenario(profile, investment_analysis),
-        "inflation_shock": _inflation_shock_scenario(profile, cashflow),
-        "income_reduction": _income_reduction_scenario(profile, cashflow),
+        "job_loss": _job_loss_scenario(profile, cashflow, scn_cfg),
+        "interest_rate_shock": _rate_shock_scenario(profile, assumptions, cashflow, mortgage_analysis, scn_cfg),
+        "market_downturn": _market_downturn_scenario(profile, investment_analysis, scn_cfg),
+        "inflation_shock": _inflation_shock_scenario(profile, cashflow, scn_cfg),
+        "income_reduction": _income_reduction_scenario(profile, cashflow, scn_cfg),
     }
 
 
-def _job_loss_scenario(profile: dict, cashflow: dict) -> dict:
+def _job_loss_scenario(profile: dict, cashflow: dict, scn_cfg: dict = None) -> dict:
     """
     How long can the user survive without income?
-    Tests 3, 6, and 12 month income gaps.
     """
+    if scn_cfg is None:
+        scn_cfg = {}
     sav = profile.get("savings", {})
     liquid = sav.get("_total_liquid", 0)
     monthly_expenses = cashflow.get("expenses", {}).get("total_monthly", 0)
@@ -51,7 +53,7 @@ def _job_loss_scenario(profile: dict, cashflow: dict) -> dict:
         months_runway = liquid / monthly_burn
 
     scenarios = {}
-    for months in [3, 6, 12]:
+    for months in scn_cfg.get("job_loss_months", [3, 6, 12]):
         total_needed = monthly_burn * months
         shortfall = max(0, total_needed - liquid)
         survives = liquid >= total_needed
@@ -82,6 +84,7 @@ def _job_loss_scenario(profile: dict, cashflow: dict) -> dict:
 
 def _rate_shock_scenario(
     profile: dict, assumptions: dict, cashflow: dict, mortgage_analysis: dict,
+    scn_cfg: dict = None,
 ) -> dict:
     """
     Test mortgage affordability at elevated interest rates.
@@ -98,8 +101,11 @@ def _rate_shock_scenario(
     current_rent = profile.get("expenses", {}).get("housing", {}).get("rent_monthly", 0)
     surplus_monthly = cashflow.get("surplus", {}).get("monthly", 0)
 
+    if scn_cfg is None:
+        scn_cfg = {}
+
     scenarios = {}
-    for bump in [1, 2, 3]:
+    for bump in scn_cfg.get("rate_shock_bumps_pct", [1, 2, 3]):
         shocked_rate = base_rate + (bump / 100)
         payment = _amortising_payment(mortgage_amount, shocked_rate, term_years)
         ratio = (payment / net_monthly * 100) if net_monthly > 0 else 100
@@ -121,11 +127,12 @@ def _rate_shock_scenario(
     }
 
 
-def _market_downturn_scenario(profile: dict, investment_analysis: dict) -> dict:
+def _market_downturn_scenario(profile: dict, investment_analysis: dict, scn_cfg: dict = None) -> dict:
     """
     Impact of market corrections on investment portfolio.
-    Tests -10%, -20%, -30% drops.
     """
+    if scn_cfg is None:
+        scn_cfg = {}
     portfolio = investment_analysis.get("current_portfolio", {})
     total = portfolio.get("total_invested", 0)
     pension = portfolio.get("pension_balance", 0)
@@ -136,7 +143,7 @@ def _market_downturn_scenario(profile: dict, investment_analysis: dict) -> dict:
     projected_retirement = pension_analysis.get("projected_balance_nominal", 0)
 
     scenarios = {}
-    for drop in [10, 20, 30]:
+    for drop in scn_cfg.get("market_drop_pcts", [10, 20, 30]):
         factor = 1 - (drop / 100)
         new_total = total * factor
         loss = total - new_total
@@ -160,18 +167,19 @@ def _market_downturn_scenario(profile: dict, investment_analysis: dict) -> dict:
     }
 
 
-def _inflation_shock_scenario(profile: dict, cashflow: dict) -> dict:
+def _inflation_shock_scenario(profile: dict, cashflow: dict, scn_cfg: dict = None) -> dict:
     """
     Test impact of higher inflation on expenses and surplus.
-    Scenarios: 5%, 8%, 10% inflation.
     """
+    if scn_cfg is None:
+        scn_cfg = {}
     monthly_expenses = cashflow.get("expenses", {}).get("total_monthly", 0)
     surplus = cashflow.get("surplus", {}).get("monthly", 0)
     annual_expenses = monthly_expenses * 12
     net_annual = cashflow.get("net_income", {}).get("annual", 0)
 
     scenarios = {}
-    for rate in [5, 8, 10]:
+    for rate in scn_cfg.get("inflation_shock_pcts", [5, 8, 10]):
         inflated_annual = annual_expenses * (1 + rate / 100)
         inflated_monthly = inflated_annual / 12
         increase = inflated_monthly - monthly_expenses
@@ -190,11 +198,12 @@ def _inflation_shock_scenario(profile: dict, cashflow: dict) -> dict:
     }
 
 
-def _income_reduction_scenario(profile: dict, cashflow: dict) -> dict:
+def _income_reduction_scenario(profile: dict, cashflow: dict, scn_cfg: dict = None) -> dict:
     """
     Test impact of income reduction (pay cut, reduced hours).
-    Scenarios: -10%, -20%, -30%.
     """
+    if scn_cfg is None:
+        scn_cfg = {}
     net_monthly = cashflow.get("net_income", {}).get("monthly", 0)
     surplus = cashflow.get("surplus", {}).get("monthly", 0)
     monthly_expenses = cashflow.get("expenses", {}).get("total_monthly", 0)
@@ -202,7 +211,7 @@ def _income_reduction_scenario(profile: dict, cashflow: dict) -> dict:
     total_outgoings = monthly_expenses + debt_monthly
 
     scenarios = {}
-    for cut in [10, 20, 30]:
+    for cut in scn_cfg.get("income_cut_pcts", [10, 20, 30]):
         factor = 1 - (cut / 100)
         new_net = net_monthly * factor
         new_surplus = new_net - total_outgoings

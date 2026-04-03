@@ -21,7 +21,11 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from engine.tax import calculate_tax_on_pension_withdrawal
+from engine.tax import (
+    calculate_tax_on_pension_withdrawal,
+    calculate_capital_gains_tax,
+    calculate_dividend_tax,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -191,9 +195,11 @@ def analyse_investments(profile: dict, assumptions: dict, cashflow: dict) -> dic
     )
     pension_at_retirement_real = pension_at_retirement / ((1 + inflation) ** years_to_retirement)
 
-    safe_withdrawal_rate = 0.04
+    retire_cfg = assumptions.get("retirement", {})
+    safe_withdrawal_rate = retire_cfg.get("safe_withdrawal_rate", 0.04)
+    tax_free_lump_fraction = retire_cfg.get("tax_free_lump_sum_fraction", 0.25)
     gross_pension_income = pension_at_retirement_real * safe_withdrawal_rate
-    tax_free_lump_sum = pension_at_retirement_real * 0.25
+    tax_free_lump_sum = pension_at_retirement_real * tax_free_lump_fraction
 
     # State pension
     sp_cfg = assumptions.get("state_pension", {})
@@ -327,6 +333,7 @@ def analyse_investments(profile: dict, assumptions: dict, cashflow: dict) -> dic
     # ------------------------------------------------------------------
     withdrawal_strategy = _retirement_withdrawal_strategy(
         pension_at_retirement_real, isa, state_pension_at_retirement_real, tax_cfg,
+        retire_cfg.get("default_income_target", 30000),
     )
 
     # ------------------------------------------------------------------
@@ -350,7 +357,9 @@ def analyse_investments(profile: dict, assumptions: dict, cashflow: dict) -> dic
     # ------------------------------------------------------------------
     # 12. IA-11: ISA contribution tracking
     # ------------------------------------------------------------------
-    isa_tracking = _isa_contribution_tracking(sav)
+    isa_cfg = assumptions.get("isa", {})
+    lisa_cfg = assumptions.get("lisa", {})
+    isa_tracking = _isa_contribution_tracking(sav, isa_cfg, lisa_cfg)
 
     # ------------------------------------------------------------------
     # 13. IA-10: ESG awareness
@@ -364,7 +373,17 @@ def analyse_investments(profile: dict, assumptions: dict, cashflow: dict) -> dic
         )
 
     # ------------------------------------------------------------------
-    # 14. Investable surplus
+    # 14. T2-2: Tax efficiency analysis (CGT, dividends, ISA vs GIA)
+    # ------------------------------------------------------------------
+    cgt_cfg = assumptions.get("capital_gains_tax", {})
+    div_cfg = assumptions.get("dividend_tax", {})
+    tax_efficiency = _tax_efficiency_analysis(
+        sav, primary_gross, expected_return, cgt_cfg, div_cfg, tax_cfg,
+        years_to_retirement,
+    )
+
+    # ------------------------------------------------------------------
+    # 15. Investable surplus
     # ------------------------------------------------------------------
     investable_monthly = max(0, surplus - monthly_pension_contribution)
 
@@ -434,6 +453,8 @@ def analyse_investments(profile: dict, assumptions: dict, cashflow: dict) -> dic
         result["emergency_fund_warning"] = emergency_fund_warning
     if esg_note:
         result["esg_note"] = esg_note
+    if tax_efficiency:
+        result["tax_efficiency"] = tax_efficiency
 
     return result
 
@@ -462,13 +483,13 @@ def _fee_impact_analysis(
 
     total_fee_drag = isa_fee_drag + pension_fee_drag
 
-    # Low-cost comparison (0.15% total)
+    # Low-cost comparison
     low_cost_fee = 0.0015
     low_cost_isa = _future_value(isa, 0, expected_return - low_cost_fee, years)
     low_cost_pension = _future_value(pension, monthly_pension, expected_return - low_cost_fee, years)
     low_cost_total = low_cost_isa + low_cost_pension
 
-    # High-cost comparison (1.5% total)
+    # High-cost comparison
     high_cost_fee = 0.015
     high_cost_isa = _future_value(isa, 0, expected_return - high_cost_fee, years)
     high_cost_pension = _future_value(pension, monthly_pension, expected_return - high_cost_fee, years)
@@ -563,11 +584,11 @@ def _time_horizon_allocation(sav: dict, profile: dict, years_to_retirement: int)
 def _retirement_withdrawal_strategy(
     pension_real: float, isa_balance: float,
     state_pension: float, tax_cfg: dict,
+    target_income: float = 30000,
 ) -> dict:
     """Model optimal vs naive withdrawal ordering in retirement."""
     pa = tax_cfg.get("personal_allowance", 12570)
     basic_thresh = tax_cfg.get("basic_threshold", 50270)
-    target_income = 30000  # reasonable retirement income target
 
     # Naive: all from pension
     naive_tax = calculate_tax_on_pension_withdrawal(target_income, state_pension, tax_cfg)
@@ -712,10 +733,14 @@ def _annuity_comparison(
 # ISA contribution tracking (IA-11)
 # ---------------------------------------------------------------------------
 
-def _isa_contribution_tracking(sav: dict) -> dict:
+def _isa_contribution_tracking(sav: dict, isa_cfg: dict = None, lisa_cfg: dict = None) -> dict:
     """Track ISA and LISA contribution allowances."""
-    isa_limit = 20000
-    lisa_limit = 4000
+    if isa_cfg is None:
+        isa_cfg = {}
+    if lisa_cfg is None:
+        lisa_cfg = {}
+    isa_limit = isa_cfg.get("annual_limit", 20000)
+    lisa_limit = lisa_cfg.get("annual_limit", 4000)
     isa_used = sav.get("isa_contributions_this_year", 0)
     lisa_used = sav.get("lisa_contributions_this_year", 0)
 
@@ -728,6 +753,67 @@ def _isa_contribution_tracking(sav: dict) -> dict:
         "lisa_remaining_allowance": round(lisa_limit - lisa_used, 2),
         "note": "Prioritise filling ISA before using taxable accounts. LISA contributions earn a 25% government bonus.",
     }
+
+
+# ---------------------------------------------------------------------------
+# T2-2: Tax efficiency analysis
+# ---------------------------------------------------------------------------
+
+def _tax_efficiency_analysis(
+    sav: dict, gross_income: float, expected_return: float,
+    cgt_cfg: dict, div_cfg: dict, tax_cfg: dict,
+    years: int,
+) -> dict | None:
+    """Compare tax drag on GIA vs ISA/pension wrappers."""
+    gia_balance = sav.get("gia_balance", sav.get("other_investments", 0))
+    isa_balance = sav.get("isa_balance", 0)
+
+    if gia_balance <= 0 and isa_balance <= 0:
+        return None
+
+    # Estimate annual dividends and gains on GIA holdings
+    dividend_yield = 0.02  # typical UK equity yield
+    annual_dividends = gia_balance * dividend_yield
+    annual_growth = gia_balance * (expected_return - dividend_yield)
+
+    # Tax on dividends
+    div_tax = calculate_dividend_tax(annual_dividends, gross_income, div_cfg, tax_cfg)
+
+    # CGT if crystallised (e.g. annual bed-and-ISA)
+    cgt = calculate_capital_gains_tax(annual_growth, gross_income, cgt_cfg, tax_cfg)
+
+    # Total annual tax drag
+    annual_tax_drag = div_tax["tax"] + cgt["tax"]
+
+    # What if moved to ISA?
+    isa_limit = 20000
+    transferable = min(gia_balance, isa_limit)
+    annual_saving_if_isa = transferable / gia_balance * annual_tax_drag if gia_balance > 0 else 0
+
+    # Projected drag over investment horizon
+    projected_drag = annual_tax_drag * years
+
+    result = {
+        "gia_balance": round(gia_balance, 2),
+        "estimated_annual_dividends": round(annual_dividends, 2),
+        "dividend_tax": div_tax,
+        "estimated_annual_gains": round(annual_growth, 2),
+        "capital_gains_tax_if_crystallised": cgt,
+        "annual_tax_drag": round(annual_tax_drag, 2),
+        "projected_tax_drag_over_term": round(projected_drag, 2),
+    }
+
+    if transferable > 0 and annual_tax_drag > 0:
+        result["bed_and_isa_opportunity"] = {
+            "transferable_this_year": round(transferable, 2),
+            "annual_tax_saving": round(annual_saving_if_isa, 2),
+            "action": (
+                f"Transfer up to {transferable:,.0f} from GIA to ISA to shelter from "
+                f"dividend and capital gains tax (saving ~{annual_saving_if_isa:,.0f}/year)."
+            ),
+        }
+
+    return result
 
 
 # ---------------------------------------------------------------------------

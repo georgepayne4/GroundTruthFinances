@@ -91,6 +91,9 @@ def simulate_life_events(
         tax_rate=_effective_tax_rate(cashflow),
     )
 
+    # T2-4: Child cost model
+    child_costs_cfg = assumptions.get("child_costs", {})
+
     # Property tracking (MA-4)
     property_value = 0.0
     mortgage_balance = 0.0
@@ -99,6 +102,12 @@ def simulate_life_events(
     owns_property = False
     num_children = dependents
     childcare_savings_total = 0.0
+
+    # T2-4: Track individual children with ages
+    # Existing dependents assumed to be young children (age 0-5)
+    children: list[dict] = []
+    for i in range(dependents):
+        children.append({"age": 2, "label": f"Existing child {i+1}"})
 
     # Build event lookup by year offset
     event_map: dict[int, list[dict]] = {}
@@ -151,6 +160,7 @@ def simulate_life_events(
 
             if "child" in desc.lower() and "childcare" not in desc.lower():
                 num_children += 1
+                children.append({"age": 0, "label": desc, "birth_year": year})
 
             # MA-4: Track property purchase
             if "home" in desc.lower() or "property" in desc.lower() or "purchase" in desc.lower():
@@ -161,6 +171,20 @@ def simulate_life_events(
                     mortgage_rate = assumptions.get("mortgage", {}).get("stress_test_rate", 0.07) - 0.02
                     mortgage_term = mort.get("preferred_term_years", 25)
                     owns_property = True
+
+        # T2-4: Age children and adjust costs by age band
+        child_cost_adjustment = 0.0
+        if year > 0 and children and child_costs_cfg:
+            for child in children:
+                prev_age = child["age"]
+                child["age"] += 1
+                new_age = child["age"]
+                # Calculate cost change when a child transitions between age bands
+                prev_cost = _child_annual_cost(prev_age, child_costs_cfg)
+                new_cost = _child_annual_cost(new_age, child_costs_cfg)
+                child_cost_adjustment += new_cost - prev_cost
+            if child_cost_adjustment != 0:
+                state.expenses_annual += child_cost_adjustment
 
         # Apply salary growth (compounding, skip year 0)
         if year > 0:
@@ -291,6 +315,12 @@ def simulate_life_events(
         if year_childcare_saving > 0:
             entry["childcare_tax_relief"] = round(year_childcare_saving, 2)
 
+        if children:
+            entry["children"] = [
+                {"label": c["label"], "age": c["age"]} for c in children
+            ]
+            entry["child_cost_adjustment"] = round(child_cost_adjustment, 2)
+
         timeline.append(entry)
 
     # ------------------------------------------------------------------
@@ -353,6 +383,23 @@ def simulate_life_events(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _child_annual_cost(age: int, child_costs_cfg: dict) -> float:
+    """Return estimated annual cost for a child at a given age."""
+    if age < 0:
+        return 0.0
+    if age <= 2:
+        return child_costs_cfg.get("nursery_0_2_monthly", 1200) * 12
+    elif age <= 4:
+        return child_costs_cfg.get("nursery_3_4_monthly", 600) * 12
+    elif age <= 11:
+        return child_costs_cfg.get("after_school_5_11_monthly", 300) * 12
+    elif age <= 17:
+        return child_costs_cfg.get("secondary_12_17_monthly", 200) * 12
+    elif age <= 21:
+        return child_costs_cfg.get("university_annual", 12000)
+    return 0.0
+
 
 class _SimState:
     """Mutable state container for the simulation loop."""

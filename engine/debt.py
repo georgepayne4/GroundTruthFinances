@@ -90,7 +90,9 @@ def analyse_debt(profile: dict, assumptions: dict) -> dict[str, Any]:
     # 5. Extra payment simulation (excludes student loans)
     # ------------------------------------------------------------------
     non_sl_debts = [d for d in debts if d.get("type", "") not in ("student_loan", "student_loan_postgrad")]
-    extra_scenarios = _simulate_extra_payments(non_sl_debts, [100, 200, 500])
+    debt_sim_cfg = assumptions.get("debt_simulation", {})
+    extra_amounts = debt_sim_cfg.get("extra_payment_scenarios", [100, 200, 500])
+    extra_scenarios = _simulate_extra_payments(non_sl_debts, extra_amounts)
 
     return {
         "debts": analyses,
@@ -346,18 +348,19 @@ def _analyse_single_debt(debt: dict, high_thresh: float, mod_thresh: float) -> d
 def _payoff_schedule(balance: float, annual_rate: float, monthly_payment: float) -> tuple[int, float]:
     """
     Simulate month-by-month payoff and return (months, total_interest).
-    Caps at 600 months (50 years) to avoid infinite loops on underpaying debts.
+    Caps at max_months to avoid infinite loops on underpaying debts.
     """
     if balance <= 0:
         return 0, 0.0
+
+    max_months = 600
     if monthly_payment <= 0:
-        return 600, balance * annual_rate / 12 * 600
+        return max_months, balance * annual_rate / 12 * max_months
 
     monthly_rate = annual_rate / 12
     remaining = balance
     total_interest = 0.0
     months = 0
-    max_months = 600
 
     while remaining > 0 and months < max_months:
         interest = remaining * monthly_rate

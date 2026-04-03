@@ -3,6 +3,8 @@ tax.py — Shared Tax Calculation Utilities
 
 Extracted from cashflow.py for reuse across modules (pension withdrawal
 tax in investments.py, retirement income modelling, etc.).
+
+T2-2: Capital gains tax and dividend tax calculations.
 """
 
 from __future__ import annotations
@@ -63,9 +65,10 @@ def calculate_national_insurance(
 
     if self_employed:
         upper_profits_limit = tax_cfg.get("basic_threshold", 50270)
-        class4_main_rate = 0.09
-        class4_additional_rate = 0.02
-        class2_weekly = 3.45
+        se_cfg = tax_cfg.get("self_employment", {})
+        class4_main_rate = se_cfg.get("class4_main_rate", 0.09)
+        class4_additional_rate = se_cfg.get("class4_additional_rate", 0.02)
+        class2_weekly = se_cfg.get("class2_weekly_rate", 3.45)
 
         profits_above_threshold = max(0, gross_annual - threshold)
         main_band = min(profits_above_threshold, upper_profits_limit - threshold)
@@ -106,4 +109,123 @@ def calculate_tax_on_pension_withdrawal(
         "income_tax": round(tax, 2),
         "net_income": round(net_income, 2),
         "effective_tax_rate_pct": round(effective_rate, 1),
+    }
+
+
+# ---------------------------------------------------------------------------
+# T2-2: Capital Gains Tax
+# ---------------------------------------------------------------------------
+
+def calculate_capital_gains_tax(
+    gain: float, gross_income: float,
+    cgt_cfg: dict, tax_cfg: dict,
+    is_property: bool = False,
+) -> dict:
+    """
+    Calculate capital gains tax on a disposal.
+    Rates depend on whether gain is from property and taxpayer's income level.
+    """
+    exemption = cgt_cfg.get("annual_exemption", 3000)
+    taxable_gain = max(0, gain - exemption)
+
+    if taxable_gain <= 0:
+        return {
+            "gain": round(gain, 2),
+            "annual_exemption": exemption,
+            "taxable_gain": 0,
+            "tax": 0,
+            "effective_rate_pct": 0,
+        }
+
+    basic_thresh = tax_cfg.get("basic_threshold", 50270)
+    pa = tax_cfg.get("personal_allowance", 12570)
+
+    if is_property:
+        basic_rate = cgt_cfg.get("basic_rate_property", 0.18)
+        higher_rate = cgt_cfg.get("higher_rate_property", 0.24)
+    else:
+        basic_rate = cgt_cfg.get("basic_rate", 0.10)
+        higher_rate = cgt_cfg.get("higher_rate", 0.20)
+
+    # How much basic rate band remains after income
+    basic_band_remaining = max(0, basic_thresh - gross_income)
+
+    basic_gain = min(taxable_gain, basic_band_remaining)
+    higher_gain = max(0, taxable_gain - basic_gain)
+
+    tax = basic_gain * basic_rate + higher_gain * higher_rate
+    effective_rate = (tax / gain * 100) if gain > 0 else 0
+
+    return {
+        "gain": round(gain, 2),
+        "annual_exemption": exemption,
+        "taxable_gain": round(taxable_gain, 2),
+        "basic_rate_portion": round(basic_gain, 2),
+        "higher_rate_portion": round(higher_gain, 2),
+        "tax": round(tax, 2),
+        "effective_rate_pct": round(effective_rate, 1),
+    }
+
+
+# ---------------------------------------------------------------------------
+# T2-2: Dividend Tax
+# ---------------------------------------------------------------------------
+
+def calculate_dividend_tax(
+    dividends: float, gross_income: float,
+    div_cfg: dict, tax_cfg: dict,
+) -> dict:
+    """
+    Calculate tax on dividend income.
+    Dividend allowance shelters the first portion; remainder taxed at
+    rates that depend on the taxpayer's income band.
+    """
+    allowance = div_cfg.get("allowance", 500)
+    taxable_dividends = max(0, dividends - allowance)
+
+    if taxable_dividends <= 0:
+        return {
+            "dividends": round(dividends, 2),
+            "allowance": allowance,
+            "taxable_dividends": 0,
+            "tax": 0,
+            "effective_rate_pct": 0,
+        }
+
+    basic_thresh = tax_cfg.get("basic_threshold", 50270)
+    higher_thresh = tax_cfg.get("higher_threshold", 125140)
+
+    basic_rate = div_cfg.get("basic_rate", 0.0875)
+    higher_rate = div_cfg.get("higher_rate", 0.3375)
+    additional_rate = div_cfg.get("additional_rate", 0.3935)
+
+    # Total income including dividends determines band
+    total_income = gross_income + dividends
+
+    tax = 0.0
+    remaining = taxable_dividends
+
+    if gross_income < basic_thresh:
+        basic_space = basic_thresh - gross_income - allowance
+        basic_portion = min(remaining, max(0, basic_space))
+        tax += basic_portion * basic_rate
+        remaining -= basic_portion
+
+    if remaining > 0 and gross_income < higher_thresh:
+        higher_space = higher_thresh - max(gross_income, basic_thresh)
+        higher_portion = min(remaining, max(0, higher_space))
+        tax += higher_portion * higher_rate
+        remaining -= higher_portion
+
+    if remaining > 0:
+        tax += remaining * additional_rate
+
+    effective_rate = (tax / dividends * 100) if dividends > 0 else 0
+
+    return {
+        "dividends": round(dividends, 2),
+        "allowance": allowance,
+        "taxable_dividends": round(taxable_dividends, 2),
+        "tax": round(tax, 2),
+        "effective_rate_pct": round(effective_rate, 1),
     }

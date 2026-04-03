@@ -36,10 +36,12 @@ def analyse_mortgage(profile: dict, assumptions: dict, cashflow: dict, debt_anal
     term_years = mort.get("preferred_term_years", mort_cfg.get("typical_term_years", 25))
     joint = mort.get("joint_application", False)
 
+    partner = profile.get("partner", {})
     primary_gross = inc.get("primary_gross_annual", 0)
-    partner_gross = inc.get("partner_gross_annual", 0)
+    partner_gross = partner.get("gross_salary", inc.get("partner_gross_annual", 0))
     surplus_monthly = cashflow.get("surplus", {}).get("monthly", 0)
     employment_type = personal.get("employment_type", "employed")
+    mort_costs = assumptions.get("mortgage_costs", {})
 
     # ------------------------------------------------------------------
     # 1. Borrowing capacity (MA-6: employment type impact)
@@ -59,7 +61,8 @@ def analyse_mortgage(profile: dict, assumptions: dict, cashflow: dict, debt_anal
     # Reduce borrowing capacity for existing debt
     # T1-1: Weight student loan payments by proximity to write-off
     total_debt_payments = _weighted_debt_payments(debt_analysis, assumptions)
-    dti_adjustment = min(total_debt_payments * 12 * 3, max_borrowing * 0.20)
+    dti_cap = mort_costs.get("dti_adjustment_cap_pct", 0.20)
+    dti_adjustment = min(total_debt_payments * 12 * 3, max_borrowing * dti_cap)
     adjusted_borrowing = max(0, max_borrowing - dti_adjustment)
 
     # ------------------------------------------------------------------
@@ -92,7 +95,8 @@ def analyse_mortgage(profile: dict, assumptions: dict, cashflow: dict, debt_anal
     ltv_pct = current_ltv * 100
 
     stress_rate = mort_cfg.get("stress_test_rate", 0.07)
-    base_market_rate = stress_rate - 0.02
+    rate_offset = mort_costs.get("rate_offset_from_stress", 0.02)
+    base_market_rate = stress_rate - rate_offset
     ltv_tiers = assumptions.get("ltv_rate_tiers", [])
     ltv_adjustment = _get_ltv_rate_adjustment(current_ltv, ltv_tiers)
     estimated_market_rate = base_market_rate + ltv_adjustment
@@ -124,8 +128,8 @@ def analyse_mortgage(profile: dict, assumptions: dict, cashflow: dict, debt_anal
     # 5. Acquisition costs
     # ------------------------------------------------------------------
     first_time_buyer = not profile.get("_owns_property", False)
-    sdlt = _calculate_stamp_duty(target_value, first_time_buyer, assumptions)
-    acquisition_costs = _estimate_acquisition_costs(target_value, mortgage_amount, sdlt, assumptions)
+    sdlt = _calculate_stamp_duty(target_value, first_time_buyer, assumptions, mort_costs)
+    acquisition_costs = _estimate_acquisition_costs(target_value, mortgage_amount, sdlt, mort_costs)
 
     # ------------------------------------------------------------------
     # 6. MA-1: Product comparison
@@ -139,7 +143,7 @@ def analyse_mortgage(profile: dict, assumptions: dict, cashflow: dict, debt_anal
     # 7. MA-2: Overpayment modelling
     # ------------------------------------------------------------------
     overpayment_analysis = _overpayment_analysis(
-        mortgage_amount, estimated_market_rate, term_years,
+        mortgage_amount, estimated_market_rate, term_years, mort_costs,
     )
 
     # ------------------------------------------------------------------
@@ -366,14 +370,18 @@ def _compare_products(
 
 def _overpayment_analysis(
     principal: float, annual_rate: float, term_years: int,
+    mort_costs: dict = None,
 ) -> list[dict]:
     """Model impact of monthly overpayments."""
+    if mort_costs is None:
+        mort_costs = {}
     base_monthly = _monthly_repayment(principal, annual_rate, term_years)
     base_total_interest = base_monthly * term_years * 12 - principal
-    annual_overpayment_limit = principal * 0.10  # 10% penalty-free
+    overpay_limit_pct = mort_costs.get("overpayment_annual_limit_pct", 0.10)
+    annual_overpayment_limit = principal * overpay_limit_pct
 
     scenarios = []
-    for extra in [100, 200, 500]:
+    for extra in mort_costs.get("overpayment_scenarios", [100, 200, 500]):
         # Check against overpayment limit
         annual_extra = extra * 12
         exceeds_limit = annual_extra > annual_overpayment_limit
@@ -446,7 +454,7 @@ def _remortgage_cliff_edge(
             "svr_monthly": round(svr_monthly, 2),
             "payment_shock": round(payment_shock, 2),
             "ends_after_years": product_term,
-            "remortgage_fee_estimate": 1500,
+            "remortgage_fee_estimate": products_cfg.get("_remortgage_fee", 1500),
         })
 
     return {
@@ -472,7 +480,8 @@ def _shared_ownership_analysis(
     shares = []
     for share_pct in [0.25, 0.50, 0.75]:
         share_value = property_value * share_pct
-        share_deposit = share_value * 0.10  # 10% of share
+        so_deposit_pct = so_cfg.get("deposit_pct", 0.10)
+        share_deposit = share_value * so_deposit_pct
         share_mortgage = share_value - share_deposit
         unowned_value = property_value * (1 - share_pct)
         monthly_rent_on_unowned = unowned_value * rent_pct / 12
@@ -613,11 +622,14 @@ def _analyse_ltv_bands(
 # Stamp Duty Land Tax (SDLT)
 # ---------------------------------------------------------------------------
 
-def _calculate_stamp_duty(property_value: float, first_time_buyer: bool, assumptions: dict) -> dict:
+def _calculate_stamp_duty(property_value: float, first_time_buyer: bool, assumptions: dict, mort_costs: dict = None) -> dict:
     """Calculate UK Stamp Duty Land Tax."""
+    if mort_costs is None:
+        mort_costs = {}
     sdlt_cfg = assumptions.get("stamp_duty", {})
+    ftb_threshold = mort_costs.get("first_time_buyer_threshold", 625000)
 
-    if first_time_buyer and property_value <= 625000:
+    if first_time_buyer and property_value <= ftb_threshold:
         bands = sdlt_cfg.get("first_time_buyer", [
             {"threshold": 425000, "rate": 0.00},
             {"threshold": 625000, "rate": 0.05},
@@ -666,16 +678,18 @@ def _calculate_stamp_duty(property_value: float, first_time_buyer: bool, assumpt
 
 
 def _estimate_acquisition_costs(
-    property_value: float, mortgage_amount: float, sdlt: dict, assumptions: dict,
+    property_value: float, mortgage_amount: float, sdlt: dict, mort_costs: dict = None,
 ) -> dict:
     """Itemised estimate of total acquisition costs."""
+    if mort_costs is None:
+        mort_costs = {}
     stamp_duty = sdlt["total_stamp_duty"]
 
-    solicitor = 1500
-    survey = 500
-    valuation = 350
-    mortgage_arrangement_fee = 1000
-    moving_costs = 1000
+    solicitor = mort_costs.get("solicitor", 1500)
+    survey = mort_costs.get("survey", 500)
+    valuation = mort_costs.get("valuation", 350)
+    mortgage_arrangement_fee = mort_costs.get("arrangement_fee", 1000)
+    moving_costs = mort_costs.get("moving_costs", 1000)
 
     total_fees = solicitor + survey + valuation + mortgage_arrangement_fee + moving_costs
     total_costs = stamp_duty + total_fees

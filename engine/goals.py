@@ -74,13 +74,16 @@ def analyse_goals(
         "all_met": ef_adequate and not has_high_interest_debt,
     }
 
+    # LISA config
+    lisa_cfg = assumptions.get("lisa", {})
+
     # ------------------------------------------------------------------
     # 1. Analyse each goal independently
     # ------------------------------------------------------------------
     analyses = []
     lisa_balance = sav.get("lisa_balance", 0)
     for g in goals:
-        a = _analyse_single_goal(g, sav, inflation, lisa_balance, age)
+        a = _analyse_single_goal(g, sav, inflation, lisa_balance, age, lisa_cfg)
         # T1-1: Mark blocked goals
         blocked_by = _check_goal_blocked(a, ef_adequate, has_high_interest_debt, ef_months_required)
         if blocked_by:
@@ -170,8 +173,12 @@ def _check_goal_blocked(
 def _analyse_single_goal(
     goal: dict, savings: dict, inflation: float,
     lisa_balance: float = 0, age: int = 30,
+    lisa_cfg: dict | None = None,
 ) -> dict:
     """Analyse feasibility of a single goal, including LISA bonus for property."""
+    if lisa_cfg is None:
+        lisa_cfg = {}
+
     name = goal.get("name", "Unnamed")
     target = goal.get("target_amount", 0)
     deadline_years = goal.get("deadline_years", 0)
@@ -186,18 +193,20 @@ def _analyse_single_goal(
     current_savings = _estimate_current_progress(goal, savings)
 
     # LISA bonus projection for property goals
+    lisa_annual_max = lisa_cfg.get("annual_limit", 4000)
+    lisa_bonus_rate = lisa_cfg.get("bonus_rate", 0.25)
+    lisa_property_limit = lisa_cfg.get("property_price_limit", 450000)
+    lisa_age_limit = lisa_cfg.get("age_limit", 40)
+
     lisa_info = None
-    if category == "property" and lisa_balance > 0 and age < 40:
-        lisa_annual_max = 4000
-        lisa_bonus_rate = 0.25
-        years_can_contribute = min(deadline_years, 40 - age)
+    if category == "property" and lisa_balance > 0 and age < lisa_age_limit:
+        years_can_contribute = min(deadline_years, lisa_age_limit - age)
         projected_bonuses = years_can_contribute * (lisa_annual_max * lisa_bonus_rate)
         projected_lisa_contributions = years_can_contribute * lisa_annual_max
         projected_lisa_total = lisa_balance + projected_lisa_contributions + projected_bonuses
 
         current_savings += projected_bonuses
 
-        lisa_property_limit = 450000
         lisa_eligible = property_price <= lisa_property_limit if property_price > 0 else True
 
         lisa_info = {

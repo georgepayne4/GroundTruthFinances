@@ -66,15 +66,35 @@ def assess_insurance(
         insurance, primary_gross, total_debt, monthly_expenses, ci_months,
     )
 
+    # T2-3: Cost estimates for insurance gaps
+    cost_estimates_cfg = assumptions.get("insurance_cost_estimates", {})
+    surplus_monthly = cashflow.get("surplus", {}).get("monthly", 0)
+
+    _add_cost_estimate(life, age, cost_estimates_cfg, surplus_monthly, "life")
+    _add_cost_estimate(income_prot, age, cost_estimates_cfg, surplus_monthly, "income_protection")
+    _add_cost_estimate(critical, age, cost_estimates_cfg, surplus_monthly, "critical_illness")
+
     gaps = []
     for assessment in [life, income_prot, critical]:
         if assessment.get("gap_identified"):
-            gaps.append({
+            gap_entry = {
                 "type": assessment["type"],
                 "severity": assessment["severity"],
                 "message": assessment["message"],
                 "recommended_action": assessment["recommended_action"],
-            })
+            }
+            if assessment.get("estimated_cost"):
+                gap_entry["estimated_cost"] = assessment["estimated_cost"]
+            gaps.append(gap_entry)
+
+    # T2-1: Survivor security analysis when partner exists
+    partner = profile.get("partner", {})
+    survivor_analysis = None
+    if partner and partner.get("gross_salary", 0) > 0:
+        survivor_analysis = _survivor_security(
+            primary_gross, partner.get("gross_salary", 0),
+            monthly_expenses, cashflow, mortgage_analysis, dependents,
+        )
 
     overall = "adequate" if not gaps else ("needs_attention" if len(gaps) <= 1 else "significant_gaps")
 
@@ -90,6 +110,7 @@ def assess_insurance(
             "pension_replacement_pct": round(pension_replacement_pct, 1),
             "coverage_adjusted": not pension_adequate,
         },
+        "survivor_analysis": survivor_analysis,
     }
 
 
@@ -269,4 +290,145 @@ def _assess_critical_illness(
         "severity": severity,
         "message": message,
         "recommended_action": action,
+    }
+
+
+# ---------------------------------------------------------------------------
+# T2-3: Cost estimation for insurance gaps
+# ---------------------------------------------------------------------------
+
+def _add_cost_estimate(
+    assessment: dict, age: int, cost_cfg: dict,
+    surplus_monthly: float, insurance_type: str,
+) -> None:
+    """Add estimated monthly cost to an insurance gap assessment."""
+    if not assessment.get("gap_identified"):
+        return
+
+    recommended = assessment.get("recommended_amount", 0) or assessment.get("recommended_monthly", 0)
+    if recommended <= 0:
+        return
+
+    age_band = _get_age_band(age)
+    if not age_band:
+        return
+
+    if insurance_type == "life":
+        rates = cost_cfg.get("term_life_per_100k", {}).get(age_band)
+        if rates and recommended > 0:
+            units = recommended / 100000
+            low = round(rates["monthly_low"] * units, 0)
+            high = round(rates["monthly_high"] * units, 0)
+            pct = round(((low + high) / 2) / surplus_monthly * 100, 1) if surplus_monthly > 0 else 0
+            assessment["estimated_cost"] = {
+                "monthly_low": low,
+                "monthly_high": high,
+                "cover_amount": round(recommended, 0),
+                "pct_of_surplus": pct,
+                "note": f"Term life cover of {recommended:,.0f}: approx {low:,.0f}-{high:,.0f}/month",
+            }
+
+    elif insurance_type == "income_protection":
+        pct_of_benefit = cost_cfg.get("income_protection_pct_of_benefit", 0.04)
+        annual_benefit = recommended * 12
+        annual_cost = annual_benefit * pct_of_benefit
+        monthly_cost = round(annual_cost / 12, 0)
+        pct = round(monthly_cost / surplus_monthly * 100, 1) if surplus_monthly > 0 else 0
+        assessment["estimated_cost"] = {
+            "monthly_estimate": monthly_cost,
+            "annual_benefit": round(annual_benefit, 0),
+            "pct_of_surplus": pct,
+            "note": f"Income protection of {recommended:,.0f}/month: approx {monthly_cost:,.0f}/month premium",
+        }
+
+    elif insurance_type == "critical_illness":
+        rates = cost_cfg.get("critical_illness_per_100k", {}).get(age_band)
+        if rates and recommended > 0:
+            units = recommended / 100000
+            low = round(rates["monthly_low"] * units, 0)
+            high = round(rates["monthly_high"] * units, 0)
+            pct = round(((low + high) / 2) / surplus_monthly * 100, 1) if surplus_monthly > 0 else 0
+            assessment["estimated_cost"] = {
+                "monthly_low": low,
+                "monthly_high": high,
+                "cover_amount": round(recommended, 0),
+                "pct_of_surplus": pct,
+                "note": f"Critical illness cover of {recommended:,.0f}: approx {low:,.0f}-{high:,.0f}/month",
+            }
+
+
+def _get_age_band(age: int) -> str | None:
+    """Map age to cost estimate band."""
+    if 25 <= age < 30:
+        return "age_25_30"
+    elif 30 <= age < 40:
+        return "age_30_40"
+    elif 40 <= age < 50:
+        return "age_40_50"
+    elif 50 <= age < 60:
+        return "age_50_60"
+    return None
+
+
+# ---------------------------------------------------------------------------
+# T2-1: Survivor security analysis
+# ---------------------------------------------------------------------------
+
+def _survivor_security(
+    primary_gross: float, partner_gross: float,
+    monthly_expenses: float, cashflow: dict,
+    mortgage_analysis: dict, dependents: int,
+) -> dict:
+    """
+    Model whether the surviving partner can maintain the household
+    on a single income if the primary earner dies.
+    """
+    # Estimate net income for each partner individually (rough: 70% of gross)
+    primary_net_monthly = primary_gross * 0.70 / 12
+    partner_net_monthly = partner_gross * 0.70 / 12
+    household_net = cashflow.get("net_income", {}).get("monthly", 0)
+
+    mortgage_payment = 0
+    if mortgage_analysis.get("applicable"):
+        mortgage_payment = mortgage_analysis.get("repayment", {}).get("monthly_repayment", 0)
+
+    # If primary dies, partner must cover all expenses
+    survivor_income = partner_net_monthly
+    survivor_shortfall = monthly_expenses + mortgage_payment - survivor_income
+
+    # If partner dies, primary must cover all expenses
+    primary_survivor_income = primary_net_monthly
+    primary_survivor_shortfall = monthly_expenses + mortgage_payment - primary_survivor_income
+
+    scenarios = []
+    if survivor_shortfall > 0:
+        scenarios.append({
+            "scenario": "Primary earner dies",
+            "survivor_income_monthly": round(survivor_income, 2),
+            "total_outgoings_monthly": round(monthly_expenses + mortgage_payment, 2),
+            "shortfall_monthly": round(survivor_shortfall, 2),
+            "life_cover_needed": round(survivor_shortfall * 12 * 20, 0),  # 20 years cover
+            "assessment": "critical" if dependents > 0 else "concerning",
+        })
+
+    if primary_survivor_shortfall > 0:
+        scenarios.append({
+            "scenario": "Partner dies",
+            "survivor_income_monthly": round(primary_survivor_income, 2),
+            "total_outgoings_monthly": round(monthly_expenses + mortgage_payment, 2),
+            "shortfall_monthly": round(primary_survivor_shortfall, 2),
+            "life_cover_needed": round(primary_survivor_shortfall * 12 * 20, 0),
+            "assessment": "critical" if dependents > 0 else "concerning",
+        })
+
+    return {
+        "applicable": True,
+        "scenarios": scenarios,
+        "both_adequately_covered": len(scenarios) == 0,
+        "note": (
+            "Both partners can independently cover household costs."
+            if not scenarios
+            else "One or both partners cannot cover household costs alone. "
+                 "Life insurance should bridge the gap."
+        ),
     }

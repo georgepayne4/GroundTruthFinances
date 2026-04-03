@@ -16,6 +16,7 @@ def analyse_estate(
     assumptions: dict,
     investment_analysis: dict,
     mortgage_analysis: dict,
+    cashflow: dict | None = None,
 ) -> dict[str, Any]:
     """
     Project estate value and calculate potential inheritance tax liability.
@@ -24,7 +25,8 @@ def analyse_estate(
     sav = profile.get("savings", {})
     age = personal.get("age", 30)
     dependents = personal.get("dependents", 0)
-    has_partner = profile.get("income", {}).get("partner_gross_annual", 0) > 0
+    partner = profile.get("partner", {})
+    has_partner = bool(partner) or profile.get("income", {}).get("partner_gross_annual", 0) > 0
 
     life_expectancy = assumptions.get("life_events", {}).get("life_expectancy", 85)
     iht_cfg = assumptions.get("inheritance_tax", {})
@@ -83,22 +85,42 @@ def analyse_estate(
     has_will = personal.get("has_will", False)
     has_lpa = personal.get("has_lpa", False)
 
+    # T2-3: Advisory cost estimates
+    advisory_costs = assumptions.get("advisory_cost_estimates", {})
+    surplus_monthly = 0
+    if cashflow:
+        surplus_monthly = cashflow.get("surplus", {}).get("monthly", 0)
+
     planning_actions = []
     if not has_will:
-        planning_actions.append(
-            "Write a will. Without one, intestacy rules apply and your assets may not "
-            "go where you intend. Cost: £150–£500 for a straightforward will."
-        )
+        will_cost = advisory_costs.get("will_simple", {})
+        cost_low = will_cost.get("low", 150)
+        cost_high = will_cost.get("high", 300)
+        planning_actions.append({
+            "action": "Write a will. Without one, intestacy rules apply and your assets may not "
+                      "go where you intend.",
+            "estimated_cost": f"{cost_low}-{cost_high}",
+            "cost_low": cost_low,
+            "cost_high": cost_high,
+            "one_off": True,
+        })
     if not has_lpa:
-        planning_actions.append(
-            "Set up Lasting Power of Attorney (LPA) for health and financial decisions. "
-            "This protects you if you lose mental capacity. Cost: £82 per LPA."
-        )
+        lpa_cost = advisory_costs.get("lpa_per_type", 82)
+        planning_actions.append({
+            "action": "Set up Lasting Power of Attorney (LPA) for health and financial decisions. "
+                      "This protects you if you lose mental capacity.",
+            "estimated_cost": f"{lpa_cost} per LPA (health + finance = {lpa_cost * 2})",
+            "cost_low": lpa_cost * 2,
+            "cost_high": lpa_cost * 2,
+            "one_off": True,
+        })
     if exceeds_threshold and not has_partner:
-        planning_actions.append(
-            "Consider inheritance tax planning: gifts (£3k annual exemption, 7-year rule), "
-            "life insurance in trust to cover IHT liability, or charitable giving (40% -> 36% rate)."
-        )
+        planning_actions.append({
+            "action": "Consider inheritance tax planning: gifts (3k annual exemption, 7-year rule), "
+                      "life insurance in trust to cover IHT liability, or charitable giving (40% -> 36% rate).",
+            "estimated_cost": "Varies",
+            "one_off": False,
+        })
 
     return {
         "projected_estate_value": round(total_estate, 2),

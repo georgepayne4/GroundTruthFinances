@@ -32,6 +32,7 @@ def analyse_cashflow(profile: dict, assumptions: dict) -> dict[str, Any]:
     debts = profile.get("debts", [])
     sav = profile.get("savings", {})
     personal = profile.get("personal", {})
+    partner = profile.get("partner", {})
 
     employment_type = personal.get("employment_type", "employed")
     is_self_employed = employment_type in ("self_employed", "contractor")
@@ -41,7 +42,8 @@ def analyse_cashflow(profile: dict, assumptions: dict) -> dict[str, Any]:
     # ------------------------------------------------------------------
     tax_cfg = assumptions.get("tax", {})
     primary_gross = inc.get("primary_gross_annual", 0)
-    partner_gross = inc.get("partner_gross_annual", 0)
+    # T2-1: Partner section takes precedence over legacy income field
+    partner_gross = partner.get("gross_salary", inc.get("partner_gross_annual", 0))
 
     # For self-employed, deduct business expenses before tax
     business_expenses = inc.get("business_expenses_annual", 0)
@@ -63,6 +65,15 @@ def analyse_cashflow(profile: dict, assumptions: dict) -> dict[str, Any]:
     pension_personal_annual = primary_gross * personal_pct
     pension_employer_annual = primary_gross * employer_pct
 
+    # T2-1: Partner pension contributions
+    partner_pension_personal = 0
+    partner_pension_employer = 0
+    if partner:
+        partner_pension_pct = partner.get("pension_contribution_pct", 0)
+        partner_employer_pct = partner.get("employer_pension_pct", 0)
+        partner_pension_personal = partner_gross * partner_pension_pct
+        partner_pension_employer = partner_gross * partner_employer_pct
+
     # ------------------------------------------------------------------
     # 3. Net (take-home) income
     # ------------------------------------------------------------------
@@ -74,7 +85,7 @@ def analyse_cashflow(profile: dict, assumptions: dict) -> dict[str, Any]:
     other_tax = other_gross * basic_rate
 
     total_gross_annual = primary_gross + partner_gross + other_gross
-    total_deductions = total_tax + total_ni + other_tax + pension_personal_annual
+    total_deductions = total_tax + total_ni + other_tax + pension_personal_annual + partner_pension_personal
     net_annual = total_gross_annual - total_deductions
     net_monthly = net_annual / 12
 
@@ -152,7 +163,7 @@ def analyse_cashflow(profile: dict, assumptions: dict) -> dict[str, Any]:
             "business_expenses_deducted": round(business_expenses, 2),
             "taxable_profit": round(taxable_primary, 2),
             "quarterly_tax_payment": round(quarterly_tax, 2),
-            "annual_class2_ni": round(3.45 * 52, 2) if taxable_primary > tax_cfg.get("personal_allowance", 12570) else 0,
+            "annual_class2_ni": round(assumptions.get("self_employment", {}).get("class2_weekly_rate", 3.45) * 52, 2) if taxable_primary > tax_cfg.get("personal_allowance", 12570) else 0,
             "note": "Set aside quarterly tax payments. Keep 6 months of tax in a separate account.",
         }
 
@@ -205,6 +216,26 @@ def analyse_cashflow(profile: dict, assumptions: dict) -> dict[str, Any]:
         result["spending_benchmarks"] = spending_benchmarks
     if self_employment_info:
         result["self_employment"] = self_employment_info
+
+    # T2-1: Partner/household summary
+    if partner:
+        result["partner"] = {
+            "name": partner.get("name", "Partner"),
+            "gross_salary": round(partner_gross, 2),
+            "tax": round(partner_tax, 2),
+            "ni": round(partner_ni, 2),
+            "pension_personal_annual": round(partner_pension_personal, 2),
+            "pension_employer_annual": round(partner_pension_employer, 2),
+            "net_annual": round(partner_gross - partner_tax - partner_ni - partner_pension_personal, 2),
+        }
+        result["household"] = {
+            "combined_gross_annual": round(total_gross_annual, 2),
+            "combined_net_annual": round(net_annual, 2),
+            "combined_pension_contributions": round(
+                pension_personal_annual + pension_employer_annual +
+                partner_pension_personal + partner_pension_employer, 2
+            ),
+        }
 
     return result
 

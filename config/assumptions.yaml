@@ -180,3 +180,94 @@ insurance:
 student_loan_dti:
   years_to_writeoff_50pct_weight: 10     # within 10 years: 50% DTI weight
   years_to_writeoff_25pct_weight: 5      # within 5 years: 25% DTI weight
+
+# T2-5: Extracted hardcoded values
+debt_simulation:
+  extra_payment_scenarios: [100, 200, 500]
+  max_simulation_months: 600
+
+lisa:
+  annual_limit: 4000
+  bonus_rate: 0.25
+  property_price_limit: 450000
+  age_limit: 40
+
+isa:
+  annual_limit: 20000
+
+retirement:
+  safe_withdrawal_rate: 0.04
+  tax_free_lump_sum_fraction: 0.25
+  default_income_target: 30000
+
+fee_comparison:
+  low_cost_total_pct: 0.0015
+  high_cost_total_pct: 0.015
+
+mortgage_costs:
+  solicitor: 1500
+  survey: 500
+  valuation: 350
+  arrangement_fee: 1000
+  moving_costs: 1000
+  remortgage_fee: 1500
+  overpayment_annual_limit_pct: 0.10
+  overpayment_scenarios: [100, 200, 500]
+  rate_offset_from_stress: 0.02
+  dti_adjustment_cap_pct: 0.20
+  first_time_buyer_threshold: 625000
+  shared_ownership_deposit_pct: 0.10
+
+scenarios:
+  job_loss_months: [3, 6, 12]
+  rate_shock_bumps_pct: [1, 2, 3]
+  market_drop_pcts: [10, 20, 30]
+  inflation_shock_pcts: [5, 8, 10]
+  income_cut_pcts: [10, 20, 30]
+
+self_employment:
+  class4_main_rate: 0.09
+  class4_additional_rate: 0.02
+  class2_weekly_rate: 3.45
+
+# T2-2: Capital gains tax and dividend tax
+capital_gains_tax:
+  annual_exemption: 3000
+  basic_rate: 0.10
+  higher_rate: 0.20
+  basic_rate_property: 0.18
+  higher_rate_property: 0.24
+
+dividend_tax:
+  allowance: 500
+  basic_rate: 0.0875
+  higher_rate: 0.3375
+  additional_rate: 0.3935
+
+# T2-3: Insurance cost estimates (indicative, per £100k cover)
+insurance_cost_estimates:
+  term_life_per_100k:
+    age_25_30: { monthly_low: 5, monthly_high: 8 }
+    age_30_40: { monthly_low: 8, monthly_high: 15 }
+    age_40_50: { monthly_low: 15, monthly_high: 30 }
+    age_50_60: { monthly_low: 30, monthly_high: 60 }
+  income_protection_pct_of_benefit: 0.04
+  critical_illness_per_100k:
+    age_25_30: { monthly_low: 15, monthly_high: 25 }
+    age_30_40: { monthly_low: 25, monthly_high: 45 }
+    age_40_50: { monthly_low: 45, monthly_high: 80 }
+
+advisory_cost_estimates:
+  will_simple: { low: 150, high: 300 }
+  will_mirror_couple: { low: 250, high: 400 }
+  lpa_per_type: 82
+  ifa_initial_consultation: { low: 500, high: 1500 }
+  pension_transfer_analysis: { low: 500, high: 1000 }
+
+# T2-4: Child cost model by age band
+child_costs:
+  nursery_0_2_monthly: 1200       # full-time nursery
+  nursery_3_4_monthly: 600        # after 30 free hours
+  after_school_5_11_monthly: 300
+  secondary_12_17_monthly: 200
+  university_annual: 12000        # maintenance + fees contribution
