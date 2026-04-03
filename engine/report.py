@@ -29,6 +29,7 @@ def assemble_report(
     insurance: dict | None = None,
     scenarios: dict | None = None,
     estate: dict | None = None,
+    sensitivity: dict | None = None,
 ) -> dict[str, Any]:
     """
     Assemble all analysis results into the final report structure.
@@ -59,6 +60,7 @@ def assemble_report(
         "insurance": insurance,
         "stress_scenarios": scenarios,
         "estate": estate,
+        "sensitivity_analysis": sensitivity,
         "advisor_insights": insights,
         "review_schedule": insights.get("review_schedule"),
     }

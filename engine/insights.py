@@ -38,9 +38,16 @@ def generate_insights(
     conflicts = _detect_goal_event_conflicts(profile, cashflow, life_events)
     tax_opts = _tax_optimisation_insights(profile, assumptions, cashflow)
 
+    # T1-3: Surplus deployment plan
+    surplus_plan = _surplus_deployment_plan(
+        profile, assumptions, cashflow, debt_analysis,
+        investment_analysis, mortgage_analysis,
+    )
+
     insights: dict[str, Any] = {
         "executive_summary": _executive_summary(name, scoring, cashflow, profile),
         "top_priorities": _top_priorities(cashflow, debt_analysis, goal_analysis, mortgage_analysis, scoring),
+        "surplus_deployment_plan": surplus_plan,
         "cashflow_insights": _cashflow_insights(cashflow),
         "debt_insights": _debt_insights(debt_analysis),
         "goal_insights": _goal_insights(goal_analysis),
@@ -281,20 +288,30 @@ def _debt_insights(debt_analysis: dict) -> list[str]:
                 f"top repayment priority. Consider a 0% balance transfer card to freeze interest while repaying."
             )
         if d["type"] in ("student_loan", "student_loan_postgrad"):
+            # T1-5: Enhanced student loan insights with write-off intelligence
+            woi = d.get("write_off_intelligence", {})
             written_off = d.get("will_be_written_off", False)
             monthly = d.get("minimum_payment_monthly", 0)
             threshold = d.get("repayment_threshold", 0)
             if written_off:
+                total_repaid = woi.get("total_lifetime_repayment", 0)
                 amount = d.get("amount_written_off", 0)
                 write_off_age = d.get("write_off_age")
+                break_even = woi.get("break_even_salary")
                 insights.append(
-                    f"'{d['name']}' is projected to be written off with {amount:,.0f} remaining "
-                    f"(around age {write_off_age}). Do NOT overpay — extra payments would be wasted."
+                    f"'{d['name']}': At your salary trajectory, you'll repay £{total_repaid:,.0f} "
+                    f"of £{d['balance']:,.0f} before write-off (age {write_off_age}). "
+                    f"Do NOT overpay — every extra £1 is £1 less written off."
                 )
+                if break_even:
+                    insights.append(
+                        f"  Break-even salary: you'd need to earn over £{break_even:,.0f}/year "
+                        f"consistently to clear this loan before write-off."
+                    )
             else:
                 insights.append(
-                    f"'{d['name']}' will be repaid in full at {monthly:,.0f}/month "
-                    f"(income-contingent: deducted automatically above {threshold:,.0f}/year)."
+                    f"'{d['name']}' will be repaid in full at £{monthly:,.0f}/month "
+                    f"(income-contingent: deducted automatically above £{threshold:,.0f}/year)."
                 )
 
     return insights
@@ -304,6 +321,22 @@ def _goal_insights(goal_analysis: dict) -> list[str]:
     insights = []
     goals = goal_analysis.get("goals", [])
     summary = goal_analysis.get("summary", {})
+
+    # T1-1: Prerequisite warnings
+    prereqs = goal_analysis.get("prerequisites", {})
+    if prereqs and not prereqs.get("all_met", True):
+        if not prereqs.get("emergency_fund_adequate"):
+            insights.append(
+                f"⚠ Emergency fund is only {prereqs['emergency_fund_months_current']:.1f} months "
+                f"(target: {prereqs['emergency_fund_months_required']}). Discretionary goals are "
+                f"blocked until this safety net is in place."
+            )
+        if not prereqs.get("high_interest_debt_cleared"):
+            insights.append(
+                f"⚠ {prereqs['high_interest_debt_count']} high-interest debt(s) totalling "
+                f"£{prereqs['high_interest_debt_balance']:,.0f} must be cleared before surplus "
+                f"flows to discretionary goals."
+            )
 
     if not goals:
         insights.append(
@@ -319,7 +352,13 @@ def _goal_insights(goal_analysis: dict) -> list[str]:
         allocated = g.get("allocated_monthly", 0)
         progress = g.get("progress_pct", 0)
 
-        if feasibility == "on_track":
+        if feasibility == "blocked":
+            blockers = g.get("blocked_by", [])
+            insights.append(
+                f"'{name}' is BLOCKED: {blockers[0] if blockers else 'prerequisites not met'}. "
+                f"No surplus allocated until prerequisites are resolved."
+            )
+        elif feasibility == "on_track":
             insights.append(
                 f"'{name}' is on track — maintain your current trajectory. "
                 f"{progress:.0f}% of the inflation-adjusted target is already covered."
@@ -395,16 +434,31 @@ def _investment_insights(investment_analysis: dict, personal: dict) -> list[str]
             f"Your pension is on track for a {replacement:.0f}% net income replacement ratio."
         )
 
-    # FA-6: Pension match optimisation
+    # FA-6 + T1-2: Pension match optimisation with £-quantified ROI
     match = investment_analysis.get("pension_match_optimisation")
     if match:
         free_money = match["free_money_left_on_table"]
         net_cost = match["net_cost_monthly"]
+        total_benefit = match.get("total_benefit_annual", 0)
+        roi = match.get("roi_per_pound", 0)
+        tax_relief = match.get("tax_relief_amount_annual", 0)
         insights.append(
             f"You're leaving £{free_money:,.0f}/year of employer contributions on the table. "
-            f"Increasing your personal contribution to {match['match_cap_pct']:.0f}% costs you "
-            f"£{net_cost:,.0f}/month after tax relief but gains £{free_money/12:,.0f}/month in employer match."
+            f"Increasing to {match['match_cap_pct']:.0f}% costs £{net_cost:,.0f}/month after "
+            f"tax relief (saving £{tax_relief:,.0f}/year) and gains £{free_money/12:,.0f}/month "
+            f"in employer match. Total benefit: £{total_benefit:,.0f}/year. "
+            f"ROI: every £1 of net cost returns £{roi:.2f}."
         )
+        # Salary sacrifice option
+        ss = match.get("salary_sacrifice_option", {})
+        if ss:
+            ss_cost = ss.get("net_cost_monthly", 0)
+            ss_roi = ss.get("roi_per_pound", 0)
+            ni_saving = ss.get("ni_saving_annual", 0)
+            insights.append(
+                f"  Via salary sacrifice: net cost drops to £{ss_cost:,.0f}/month "
+                f"(additional £{ni_saving:,.0f}/year NI saving). ROI: £{ss_roi:.2f} per £1."
+            )
 
     # IA-3: Emergency fund warning
     ef_warning = investment_analysis.get("emergency_fund_warning")
@@ -1018,4 +1072,188 @@ def _generate_review_triggers(
         "next_review": quarters[0]["review_date"],
         "schedule": quarters,
         "key_metrics": key_metrics_to_track,
+    }
+
+
+# ---------------------------------------------------------------------------
+# T1-3: Surplus deployment plan (rank uses of surplus by effective return)
+# ---------------------------------------------------------------------------
+
+def _surplus_deployment_plan(
+    profile: dict, assumptions: dict, cashflow: dict,
+    debt_analysis: dict, investment_analysis: dict,
+    mortgage_analysis: dict,
+) -> dict:
+    """
+    Rank all competing uses of surplus by effective annual return,
+    then allocate in priority order.
+    """
+    surplus = cashflow.get("surplus", {}).get("monthly", 0)
+    if surplus <= 0:
+        return {"applicable": False, "reason": "No surplus available to deploy."}
+
+    sav = profile.get("savings", {})
+    monthly_expenses = cashflow.get("expenses", {}).get("total_monthly", 1)
+    ef = sav.get("emergency_fund", 0)
+    ef_months = ef / monthly_expenses if monthly_expenses > 0 else 0
+
+    uses: list[dict] = []
+
+    # 1. High-interest debt payoff (guaranteed return = interest rate)
+    for d in debt_analysis.get("debts", []):
+        if d.get("risk_tier") == "high" and d.get("balance", 0) > 0:
+            rate = d.get("interest_rate", 0)
+            balance = d.get("balance", 0)
+            monthly_to_clear = d.get("minimum_payment_monthly", 25)
+            months_to_clear = max(1, int(balance / monthly_to_clear) + 1) if monthly_to_clear > 0 else 999
+            uses.append({
+                "action": f"Pay off {d['name']} (£{balance:,.0f} at {rate*100:.1f}% APR)",
+                "effective_return_pct": round(rate * 100, 1),
+                "type": "debt_payoff",
+                "guaranteed": True,
+                "monthly_amount": monthly_to_clear,
+                "duration_months": months_to_clear,
+                "rationale": f"Guaranteed {rate*100:.1f}% return — highest risk-adjusted return available.",
+            })
+
+    # 2. Emergency fund to 3 months (risk reduction, not return)
+    if ef_months < 3:
+        gap = max(0, (monthly_expenses * 3) - ef)
+        months_needed = max(1, int(gap / (surplus * 0.3)) + 1) if surplus > 0 else 999
+        uses.append({
+            "action": f"Build emergency fund to 3 months (need £{gap:,.0f} more)",
+            "effective_return_pct": 0,
+            "type": "emergency_fund",
+            "guaranteed": True,
+            "monthly_amount": round(min(surplus * 0.5, gap), 2),
+            "duration_months": months_needed,
+            "rationale": "Not a return — but prevents forced borrowing at high rates. Top priority.",
+            "priority_override": True,
+        })
+
+    # 3. Employer pension match (if available)
+    match = investment_analysis.get("pension_match_optimisation")
+    if match:
+        net_cost = match.get("net_cost_monthly", 0)
+        roi = match.get("roi_per_pound", 0)
+        total_benefit = match.get("total_benefit_annual", 0)
+        uses.append({
+            "action": f"Max employer pension match (increase to {match['match_cap_pct']:.0f}%)",
+            "effective_return_pct": round(roi * 100, 0),
+            "type": "pension_match",
+            "guaranteed": True,
+            "monthly_amount": round(net_cost, 2),
+            "duration_months": None,  # ongoing
+            "rationale": f"Every £1 net cost returns £{roi:.2f} (employer match + tax relief).",
+        })
+
+    # 4. Moderate-interest debt
+    for d in debt_analysis.get("debts", []):
+        if d.get("risk_tier") == "moderate" and d.get("balance", 0) > 0:
+            rate = d.get("interest_rate", 0)
+            balance = d.get("balance", 0)
+            uses.append({
+                "action": f"Pay off {d['name']} (£{balance:,.0f} at {rate*100:.1f}%)",
+                "effective_return_pct": round(rate * 100, 1),
+                "type": "debt_payoff",
+                "guaranteed": True,
+                "monthly_amount": d.get("minimum_payment_monthly", 0),
+                "duration_months": d.get("months_to_payoff", 0),
+                "rationale": f"Guaranteed {rate*100:.1f}% return.",
+            })
+
+    # 5. Pension (beyond match) with tax relief
+    tax_cfg = assumptions.get("tax", {})
+    primary_gross = profile.get("income", {}).get("primary_gross_annual", 0)
+    if primary_gross > tax_cfg.get("basic_threshold", 50270):
+        effective_pension_return = 8 + 40  # ~8% market return + 40% tax relief on contributions
+        uses.append({
+            "action": "Additional pension contributions (higher-rate tax relief)",
+            "effective_return_pct": round(effective_pension_return / 5, 1),  # annualised rough
+            "type": "pension_extra",
+            "guaranteed": False,
+            "monthly_amount": None,
+            "duration_months": None,
+            "rationale": "40% tax relief on contributions + ~8% expected market return. Locked until age 57.",
+        })
+
+    # 6. ISA contributions
+    isa_tracking = investment_analysis.get("isa_tracking", {})
+    remaining_isa = isa_tracking.get("isa_remaining_allowance", 20000)
+    if remaining_isa > 0:
+        expected_return = investment_analysis.get("expected_annual_return_pct", 6)
+        uses.append({
+            "action": f"ISA contributions (£{remaining_isa:,.0f} allowance remaining)",
+            "effective_return_pct": expected_return,
+            "type": "isa",
+            "guaranteed": False,
+            "monthly_amount": None,
+            "duration_months": None,
+            "rationale": f"~{expected_return:.0f}% expected return, all growth tax-free. Flexible access.",
+        })
+
+    # 7. Mortgage overpayment (if applicable)
+    if mortgage_analysis.get("applicable"):
+        mort_rate = mortgage_analysis.get("repayment", {}).get("estimated_rate_pct", 0)
+        if mort_rate > 0:
+            uses.append({
+                "action": f"Mortgage overpayment (saves {mort_rate:.2f}% guaranteed)",
+                "effective_return_pct": mort_rate,
+                "type": "mortgage_overpayment",
+                "guaranteed": True,
+                "monthly_amount": 100,
+                "duration_months": None,
+                "rationale": f"Guaranteed {mort_rate:.2f}% return. Check 10% annual overpayment limit.",
+            })
+
+    # 8. Student loans — explicitly mark as "do not overpay"
+    for d in debt_analysis.get("debts", []):
+        if d.get("type") in ("student_loan", "student_loan_postgrad"):
+            woi = d.get("write_off_intelligence", {})
+            if woi.get("will_be_written_off"):
+                uses.append({
+                    "action": f"DO NOT overpay {d['name']}",
+                    "effective_return_pct": -100,
+                    "type": "student_loan_do_not_overpay",
+                    "guaranteed": True,
+                    "monthly_amount": 0,
+                    "duration_months": None,
+                    "rationale": woi.get("reasoning", "Write-off makes overpayment counterproductive."),
+                })
+
+    # Sort: emergency fund first (priority override), then by effective return descending
+    # Filter out student loan "do not overpay" entries from allocation (they're informational)
+    actionable = [u for u in uses if u["type"] != "student_loan_do_not_overpay"]
+    informational = [u for u in uses if u["type"] == "student_loan_do_not_overpay"]
+
+    # Emergency fund always first, then sort by return
+    ef_items = [u for u in actionable if u.get("priority_override")]
+    other_items = sorted(
+        [u for u in actionable if not u.get("priority_override")],
+        key=lambda x: x["effective_return_pct"],
+        reverse=True,
+    )
+
+    ordered = ef_items + other_items
+
+    # Allocate surplus
+    remaining = surplus
+    for i, use in enumerate(ordered):
+        monthly = use.get("monthly_amount")
+        if monthly is not None and monthly > 0:
+            allocated = min(remaining, monthly)
+            ordered[i]["allocated_monthly"] = round(allocated, 2)
+            remaining = max(0, remaining - allocated)
+        else:
+            ordered[i]["allocated_monthly"] = round(remaining, 2) if i == len(ordered) - 1 else 0
+
+    return {
+        "applicable": True,
+        "monthly_surplus": round(surplus, 2),
+        "deployment_order": ordered,
+        "do_not_overpay": informational,
+        "summary": (
+            f"Deploy your £{surplus:,.0f}/month surplus in this order for maximum impact. "
+            f"Higher-return, guaranteed items first."
+        ),
     }

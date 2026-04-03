@@ -1,5 +1,5 @@
 """
-main.py — GroundTruth Financial Planning Engine v3.0
+main.py — GroundTruth Financial Planning Engine v4.0
 
 Entry point that orchestrates the full analysis pipeline:
 1. Load profile and assumptions
@@ -8,11 +8,12 @@ Entry point that orchestrates the full analysis pipeline:
 4. Score financial health
 5. Generate advisor insights
 6. Run estate analysis
-7. Assemble and save report
+7. Run sensitivity analysis
+8. Assemble and save report
 
 Usage:
-    python main.py                                    # uses sample input by default
-    python main.py --profile path/to/profile.yaml     # custom profile (config/<name>_input.yaml)
+    python main.py                                    # uses sample input
+    python main.py --profile path/to/profile.yaml     # custom profile
     python main.py --assumptions path/to/assumptions.yaml
 """
 
@@ -35,6 +36,7 @@ from engine.insights import generate_insights
 from engine.insurance import assess_insurance
 from engine.scenarios import run_scenarios
 from engine.estate import analyse_estate
+from engine.sensitivity import run_sensitivity
 from engine.report import assemble_report, save_report
 
 
@@ -104,15 +106,30 @@ def main() -> None:
     if debt_result.get("avalanche_order"):
         print(f"  Priority order:     {' > '.join(debt_result['avalanche_order'])}")
 
+    # T1-5: Student loan write-off intelligence
+    for d in debt_result.get("debts", []):
+        woi = d.get("write_off_intelligence", {})
+        if woi and woi.get("will_be_written_off"):
+            be = woi.get("break_even_salary")
+            if be:
+                print(f"  {d['name']}: WRITE-OFF (break-even: £{be:,.0f}/yr)")
+            else:
+                print(f"  {d['name']}: WRITE-OFF recommended")
+
     # ------------------------------------------------------------------
-    # 5. Goal feasibility
+    # 5. Goal feasibility (T1-1: with prerequisites and debt context)
     # ------------------------------------------------------------------
     print("\nRunning goal feasibility analysis...")
-    goal_result = analyse_goals(profile, assumptions, cashflow)
+    goal_result = analyse_goals(profile, assumptions, cashflow, debt_result)
     goal_summary = goal_result.get("summary", {})
+    prereqs = goal_result.get("prerequisites", {})
     print(f"  Goals: {goal_summary.get('on_track', 0)} on track, "
           f"{goal_summary.get('at_risk', 0)} at risk, "
-          f"{goal_summary.get('unreachable', 0)} unreachable")
+          f"{goal_summary.get('unreachable', 0)} unreachable, "
+          f"{goal_summary.get('blocked', 0)} blocked")
+    if not prereqs.get("all_met", True):
+        print(f"  Prerequisites: NOT MET (EF: {prereqs.get('emergency_fund_months_current', 0):.1f}mo, "
+              f"high-interest debt: {prereqs.get('high_interest_debt_count', 0)})")
 
     # ------------------------------------------------------------------
     # 6. Investment analysis
@@ -123,14 +140,16 @@ def main() -> None:
     print(f"  Pension adequate:   {pension.get('adequate', False)}")
     print(f"  Replacement ratio:  {pension.get('income_replacement_ratio_pct', 0):.1f}% (net of tax)")
     if investment_result.get("pension_match_optimisation"):
-        free = investment_result["pension_match_optimisation"]["free_money_left_on_table"]
-        print(f"  Employer match gap: {free:,.0f}/year left on table")
+        match = investment_result["pension_match_optimisation"]
+        free = match["free_money_left_on_table"]
+        roi = match.get("roi_per_pound", 0)
+        print(f"  Employer match gap: £{free:,.0f}/year (ROI: £{roi:.2f} per £1)")
     fees = investment_result.get("fee_analysis", {})
     if fees.get("fee_drag_over_term", 0) > 0:
         print(f"  Fee drag:           {fees['fee_drag_over_term']:,.0f} over term")
 
     # ------------------------------------------------------------------
-    # 7. Mortgage readiness
+    # 7. Mortgage readiness (T1-1: student loan DTI weighting)
     # ------------------------------------------------------------------
     print("\nRunning mortgage assessment...")
     mortgage_result = analyse_mortgage(profile, assumptions, cashflow, debt_result)
@@ -151,15 +170,18 @@ def main() -> None:
         print("  Not applicable")
 
     # ------------------------------------------------------------------
-    # 8. Insurance gap assessment
+    # 8. Insurance gap assessment (T1-1: pension cross-reference)
     # ------------------------------------------------------------------
     print("\nAssessing insurance coverage...")
-    insurance_result = assess_insurance(profile, assumptions, cashflow, mortgage_result)
+    insurance_result = assess_insurance(profile, assumptions, cashflow, mortgage_result, investment_result)
     print(f"  Overall:            {insurance_result.get('overall_assessment', 'unknown')}")
     print(f"  Gaps identified:    {insurance_result.get('gap_count', 0)}")
+    pcr = insurance_result.get("pension_cross_reference", {})
+    if pcr.get("coverage_adjusted"):
+        print(f"  Pension-adjusted:   Yes (pension replacement only {pcr.get('pension_replacement_pct', 0):.0f}%)")
 
     # ------------------------------------------------------------------
-    # 9. Life event simulation
+    # 9. Life event simulation (T1-1: milestones)
     # ------------------------------------------------------------------
     print("\nRunning life event simulation...")
     life_event_result = simulate_life_events(profile, assumptions, cashflow)
@@ -170,6 +192,11 @@ def main() -> None:
     childcare = le_summary.get("total_childcare_tax_relief", 0)
     if childcare > 0:
         print(f"  Childcare relief:   {childcare:,.2f} total saved")
+    milestones = life_event_result.get("milestones", [])
+    if milestones:
+        print(f"  Milestones:         {len(milestones)} detected")
+        for ms in milestones[:3]:
+            print(f"    Year {ms['year']}: {ms['message']}")
 
     # ------------------------------------------------------------------
     # 10. Financial health scoring
@@ -215,7 +242,21 @@ def main() -> None:
         print(f"  Planning actions:   {len(planning['actions'])}")
 
     # ------------------------------------------------------------------
-    # 13. Advisor insights
+    # 13. Sensitivity analysis (T1-4)
+    # ------------------------------------------------------------------
+    print("\nRunning sensitivity analysis...")
+    sensitivity_result = run_sensitivity(
+        profile, assumptions, cashflow, debt_result,
+        investment_result, mortgage_result,
+    )
+    for category, scenarios in sensitivity_result.get("scenarios", {}).items():
+        if scenarios:
+            print(f"  {category}:")
+            for s in scenarios[:2]:
+                print(f"    {s['label']}")
+
+    # ------------------------------------------------------------------
+    # 14. Advisor insights (T1-2, T1-3)
     # ------------------------------------------------------------------
     print("\nGenerating advisor insights...")
     insights_result = generate_insights(
@@ -229,6 +270,21 @@ def main() -> None:
     print("EXECUTIVE SUMMARY")
     print(f"{'=' * 60}")
     print(insights_result.get("executive_summary", ""))
+
+    # T1-3: Print surplus deployment plan
+    surplus_plan = insights_result.get("surplus_deployment_plan", {})
+    if surplus_plan.get("applicable"):
+        print(f"\n{'=' * 60}")
+        print("SURPLUS DEPLOYMENT PLAN")
+        print(f"{'=' * 60}")
+        for i, use in enumerate(surplus_plan.get("deployment_order", []), 1):
+            alloc = use.get("allocated_monthly", 0)
+            ret = use.get("effective_return_pct", 0)
+            guaranteed = " (guaranteed)" if use.get("guaranteed") else ""
+            print(f"  {i}. {use['action']}")
+            print(f"     Return: {ret:.1f}%{guaranteed} | Allocated: £{alloc:,.0f}/mo")
+        for do_not in surplus_plan.get("do_not_overpay", []):
+            print(f"  x {do_not['action']}")
 
     # Print top priorities
     priorities = insights_result.get("top_priorities", [])
@@ -249,7 +305,7 @@ def main() -> None:
         print(f"  Next review: {review.get('next_review', 'N/A')}")
 
     # ------------------------------------------------------------------
-    # 14. Assemble and save report
+    # 15. Assemble and save report
     # ------------------------------------------------------------------
     print(f"\n{'=' * 60}")
     output_path = project_root / "outputs" / "report.json"
@@ -268,6 +324,7 @@ def main() -> None:
         insurance=insurance_result,
         scenarios=scenario_result,
         estate=estate_result,
+        sensitivity=sensitivity_result,
     )
 
     saved_path = save_report(report, output_path)

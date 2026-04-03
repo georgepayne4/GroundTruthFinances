@@ -6,7 +6,8 @@ Evaluates adequacy of insurance coverage across three pillars:
 - Income protection (cover if unable to work)
 - Critical illness (lump sum for serious diagnosis)
 
-Flags gaps and quantifies recommended coverage levels.
+T1-1: Cross-references pension adequacy to adjust coverage recommendations.
+      Uses configurable multipliers from assumptions.yaml.
 """
 
 from __future__ import annotations
@@ -15,10 +16,12 @@ from typing import Any
 
 
 def assess_insurance(
-    profile: dict, assumptions: dict, cashflow: dict, mortgage_analysis: dict,
+    profile: dict, assumptions: dict, cashflow: dict,
+    mortgage_analysis: dict, investment_analysis: dict | None = None,
 ) -> dict[str, Any]:
     """
     Assess insurance coverage adequacy and identify gaps.
+    T1-1: Accepts investment_analysis to cross-reference pension adequacy.
     """
     personal = profile.get("personal", {})
     inc = profile.get("income", {})
@@ -31,13 +34,37 @@ def assess_insurance(
     total_debt = profile.get("_debt_summary", {}).get("total_balance", 0)
     monthly_expenses = cashflow.get("expenses", {}).get("total_monthly", 0)
 
+    # Insurance config from assumptions
+    ins_cfg = assumptions.get("insurance", {})
+    life_mult_dep = ins_cfg.get("life_multiplier_with_dependents", 10)
+    life_mult_mort = ins_cfg.get("life_multiplier_mortgage_only", 5)
+    ip_pct = ins_cfg.get("income_protection_pct", 0.60)
+    ci_months = ins_cfg.get("critical_illness_expense_months", 24)
+    pension_uplift = ins_cfg.get("pension_inadequacy_life_uplift", 1.5)
+
     # Mortgage context
     has_mortgage_plans = mortgage_analysis.get("applicable", False)
     mortgage_amount = mortgage_analysis.get("repayment", {}).get("mortgage_amount", 0) if has_mortgage_plans else 0
 
-    life = _assess_life_insurance(insurance, primary_gross, dependents, total_debt, mortgage_amount, age)
-    income_prot = _assess_income_protection(insurance, net_monthly, primary_gross, partner_gross, dependents)
-    critical = _assess_critical_illness(insurance, primary_gross, total_debt, monthly_expenses)
+    # T1-1: Pension adequacy cross-reference
+    pension_adequate = True
+    pension_replacement_pct = 0
+    if investment_analysis:
+        pension = investment_analysis.get("pension_analysis", {})
+        pension_adequate = pension.get("adequate", True)
+        pension_replacement_pct = pension.get("income_replacement_ratio_pct", 0)
+
+    life = _assess_life_insurance(
+        insurance, primary_gross, dependents, total_debt, mortgage_amount, age,
+        life_mult_dep, life_mult_mort, pension_adequate, pension_uplift,
+    )
+    income_prot = _assess_income_protection(
+        insurance, net_monthly, primary_gross, partner_gross, dependents,
+        ip_pct, pension_adequate,
+    )
+    critical = _assess_critical_illness(
+        insurance, primary_gross, total_debt, monthly_expenses, ci_months,
+    )
 
     gaps = []
     for assessment in [life, income_prot, critical]:
@@ -58,16 +85,23 @@ def assess_insurance(
         "gaps": gaps,
         "gap_count": len(gaps),
         "overall_assessment": overall,
+        "pension_cross_reference": {
+            "pension_adequate": pension_adequate,
+            "pension_replacement_pct": round(pension_replacement_pct, 1),
+            "coverage_adjusted": not pension_adequate,
+        },
     }
 
 
 def _assess_life_insurance(
     insurance: dict, gross_annual: float, dependents: int,
     total_debt: float, mortgage_amount: float, age: int,
+    mult_dependents: int, mult_mortgage: int,
+    pension_adequate: bool, pension_uplift: float,
 ) -> dict:
     """
     Life insurance: protects dependents by replacing income.
-    Rule of thumb: 10-15x annual income if dependents, plus debt coverage.
+    T1-1: If pension is inadequate, multiply cover by uplift factor.
     """
     has_cover = insurance.get("life_insurance", False)
     cover_amount = insurance.get("life_insurance_amount", 0)
@@ -79,17 +113,24 @@ def _assess_life_insurance(
         message = "No dependents and no mortgage — life insurance is not a priority."
         action = "Review if circumstances change (partner, children, property)."
     else:
-        multiplier = 10 if dependents > 0 else 5
+        multiplier = mult_dependents if dependents > 0 else mult_mortgage
         income_cover = gross_annual * multiplier
         debt_cover = total_debt + mortgage_amount
         recommended = income_cover + debt_cover
+
+        # T1-1: Uplift if pension inadequate
+        if not pension_adequate and dependents > 0:
+            recommended *= pension_uplift
+            uplift_note = f" (uplifted ×{pension_uplift:.1f} due to inadequate pension)"
+        else:
+            uplift_note = ""
 
         if not has_cover:
             gap = True
             severity = "high" if dependents > 0 else "moderate"
             message = (
                 f"No life insurance in place. With {dependents} dependent(s), "
-                f"recommended cover is £{recommended:,.0f} ({multiplier}x income + debts)."
+                f"recommended cover is £{recommended:,.0f} ({multiplier}x income + debts{uplift_note})."
                 if dependents > 0
                 else f"No life insurance. With a mortgage of £{mortgage_amount:,.0f}, "
                      f"cover of at least £{debt_cover:,.0f} is recommended."
@@ -99,7 +140,8 @@ def _assess_life_insurance(
             gap = True
             severity = "moderate"
             message = (
-                f"Life insurance cover (£{cover_amount:,.0f}) is below recommended level (£{recommended:,.0f})."
+                f"Life insurance cover (£{cover_amount:,.0f}) is below recommended level "
+                f"(£{recommended:,.0f}{uplift_note})."
             )
             action = "Review and increase cover to match current income and debt levels."
         else:
@@ -123,24 +165,36 @@ def _assess_life_insurance(
 def _assess_income_protection(
     insurance: dict, net_monthly: float, gross_annual: float,
     partner_gross: float, dependents: int,
+    ip_pct: float, pension_adequate: bool,
 ) -> dict:
     """
-    Income protection: replaces 50-70% of income if unable to work.
-    Critical for sole earners and those without significant savings.
+    Income protection: replaces income if unable to work.
+    T1-1: Escalate severity if pension is also inadequate.
     """
     has_cover = insurance.get("income_protection", False)
     cover_monthly = insurance.get("income_protection_monthly", 0)
-    recommended_monthly = net_monthly * 0.6  # 60% of take-home
+    recommended_monthly = net_monthly * ip_pct
     sole_earner = partner_gross == 0
 
+    # T1-1: If pension inadequate AND no income protection, this is critical
+    severity_base = "high" if sole_earner else "moderate"
+    if not pension_adequate and not has_cover:
+        severity_base = "critical"
+
     if not has_cover:
-        severity = "high" if sole_earner else "moderate"
         gap = True
+        severity = severity_base
+        pension_note = (
+            " Your pension is also inadequate — without income protection, "
+            "a period of illness could permanently damage your retirement prospects."
+            if not pension_adequate else ""
+        )
         message = (
             f"No income protection. As a sole earner, if you're unable to work, "
-            f"you'd need £{recommended_monthly:,.0f}/month to maintain your lifestyle."
+            f"you'd need £{recommended_monthly:,.0f}/month to maintain your lifestyle.{pension_note}"
             if sole_earner
-            else f"No income protection. Recommended cover: £{recommended_monthly:,.0f}/month (60% of take-home)."
+            else f"No income protection. Recommended cover: £{recommended_monthly:,.0f}/month "
+                 f"({ip_pct*100:.0f}% of take-home).{pension_note}"
         )
         action = (
             "Income protection is arguably the most important insurance for working-age adults. "
@@ -153,7 +207,7 @@ def _assess_income_protection(
             f"Income protection cover (£{cover_monthly:,.0f}/mo) is below "
             f"recommended level (£{recommended_monthly:,.0f}/mo)."
         )
-        action = "Consider increasing cover to at least 60% of take-home pay."
+        action = f"Consider increasing cover to at least {ip_pct*100:.0f}% of take-home pay."
     else:
         gap = False
         severity = "info"
@@ -173,15 +227,15 @@ def _assess_income_protection(
 
 
 def _assess_critical_illness(
-    insurance: dict, gross_annual: float, total_debt: float, monthly_expenses: float,
+    insurance: dict, gross_annual: float, total_debt: float,
+    monthly_expenses: float, expense_months: int,
 ) -> dict:
     """
     Critical illness: lump sum on diagnosis of specified conditions.
-    Rule of thumb: cover debts + 2 years of living expenses.
     """
     has_cover = insurance.get("critical_illness", False)
     cover_amount = insurance.get("critical_illness_amount", 0)
-    recommended = total_debt + (monthly_expenses * 24)
+    recommended = total_debt + (monthly_expenses * expense_months)
 
     if not has_cover:
         gap = True
@@ -189,7 +243,7 @@ def _assess_critical_illness(
         message = (
             f"No critical illness cover. A serious diagnosis could leave you unable to work "
             f"while facing ongoing expenses. Recommended lump sum: £{recommended:,.0f} "
-            f"(debts + 2 years expenses)."
+            f"(debts + {expense_months} months expenses)."
         )
         action = "Consider critical illness cover, especially if you have dependents or a mortgage."
     elif cover_amount < recommended * 0.5:

@@ -97,7 +97,7 @@ def analyse_estate(
     if exceeds_threshold and not has_partner:
         planning_actions.append(
             "Consider inheritance tax planning: gifts (£3k annual exemption, 7-year rule), "
-            "life insurance in trust to cover IHT liability, or charitable giving (40% → 36% rate)."
+            "life insurance in trust to cover IHT liability, or charitable giving (40% -> 36% rate)."
         )
 
     return {

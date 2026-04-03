@@ -4,6 +4,7 @@ debt.py — Debt Analysis and Repayment Strategy
 Implements avalanche (highest-interest-first) and snowball strategies,
 calculates payoff timelines, total interest cost, and debt-to-income
 ratios.  Identifies high-interest debt requiring urgent attention.
+T1-5: Student loan write-off intelligence with break-even salary.
 """
 
 from __future__ import annotations
@@ -20,11 +21,7 @@ def analyse_debt(profile: dict, assumptions: dict) -> dict[str, Any]:
     - Debt-to-income ratio
     - Recommended extra payment allocation
     - Debt-free date projection
-
-    Student loans (Plan 2/3) are treated specially:
-    - Repayment is income-contingent (% of earnings above threshold)
-    - Write-off applies after a fixed number of years
-    - Overpayment is generally not recommended
+    - T1-5: Student loan write-off intelligence
     """
     debts = profile.get("debts", [])
     inc = profile.get("income", {})
@@ -62,7 +59,6 @@ def analyse_debt(profile: dict, assumptions: dict) -> dict[str, Any]:
     # Also produce snowball order (lowest balance first) for reference
     snowball_order = sorted(analyses, key=lambda x: x["balance"])
     for rank, a in enumerate(snowball_order, 1):
-        # Find matching entry and annotate
         for a2 in analyses:
             if a2["name"] == a["name"]:
                 a2["snowball_priority"] = rank
@@ -117,7 +113,7 @@ def analyse_debt(profile: dict, assumptions: dict) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Student loan analysis (income-contingent)
+# Student loan analysis (income-contingent) with T1-5 write-off intelligence
 # ---------------------------------------------------------------------------
 
 def _analyse_student_loan(
@@ -126,8 +122,7 @@ def _analyse_student_loan(
 ) -> dict:
     """
     Analyse a student loan using income-contingent repayment rules.
-    Plan 2: 9% above £27,295, written off after 30 years
-    Plan 3: 6% above £21,000, written off after 30 years
+    T1-5: Includes break-even salary calculation and overpayment recommendation.
     """
     plan_key = "plan_2" if dtype == "student_loan" else "plan_3"
     plan = sl_cfg.get(plan_key, {})
@@ -151,13 +146,19 @@ def _analyse_student_loan(
 
     will_be_written_off = written_off > 0
     write_off_age = age + (months // 12) if will_be_written_off else None
+    years_to_write_off = (months // 12) if will_be_written_off else None
+
+    # T1-5: Write-off intelligence
+    write_off_intelligence = _student_loan_write_off_intelligence(
+        balance, rate, threshold, repayment_rate, write_off_years,
+        gross_annual, age, total_repaid, written_off,
+    )
 
     # Student loans are always "low" risk tier — overpayment rarely advised
     risk_tier = "low"
-
     current_monthly_interest = balance * rate / 12
 
-    return {
+    result = {
         "name": name,
         "type": dtype,
         "balance": round(balance, 2),
@@ -177,10 +178,95 @@ def _analyse_student_loan(
         "will_be_written_off": will_be_written_off,
         "amount_written_off": round(written_off, 2),
         "write_off_age": write_off_age,
+        "years_to_write_off": years_to_write_off,
         "risk_tier": risk_tier,
         "avalanche_priority": 0,
         "snowball_priority": 0,
+        "write_off_intelligence": write_off_intelligence,
     }
+
+    return result
+
+
+def _student_loan_write_off_intelligence(
+    balance: float, rate: float, threshold: float,
+    repayment_rate: float, write_off_years: int,
+    current_gross: float, age: int,
+    total_repaid: float, written_off: float,
+) -> dict:
+    """
+    T1-5: Calculate whether overpaying makes sense and the break-even salary.
+    """
+    will_be_written_off = written_off > 0
+
+    # Break-even salary: the salary at which total repayments over the loan
+    # lifetime exactly equal the balance + interest (i.e. you'd clear it)
+    # At salary S: annual repayment = (S - threshold) * repayment_rate
+    # Need to find S where cumulative repayments = cumulative balance+interest
+    # Approximate using binary search
+    break_even_salary = _find_break_even_salary(
+        balance, rate, threshold, repayment_rate, write_off_years,
+    )
+
+    overpay_recommendation = "do_not_overpay" if will_be_written_off else "consider_overpaying"
+    years_to_write_off = write_off_years  # from start of plan
+
+    result = {
+        "total_lifetime_repayment": round(total_repaid, 2),
+        "amount_written_off": round(written_off, 2),
+        "will_be_written_off": will_be_written_off,
+        "overpay_recommendation": overpay_recommendation,
+        "break_even_salary": round(break_even_salary, 0) if break_even_salary else None,
+    }
+
+    if will_be_written_off:
+        savings_vs_full_repayment = balance - total_repaid
+        result["savings_from_write_off"] = round(max(0, savings_vs_full_repayment), 2)
+        result["reasoning"] = (
+            f"At your current salary trajectory, you will repay £{total_repaid:,.0f} "
+            f"of the £{balance:,.0f} balance before it is written off. "
+            f"Overpaying would waste money — every extra £1 paid is £1 less written off. "
+            f"Direct surplus to higher-return uses instead."
+        )
+        if break_even_salary:
+            result["reasoning"] += (
+                f" You would need to earn over £{break_even_salary:,.0f}/year consistently "
+                f"to clear this loan before write-off."
+            )
+    else:
+        result["reasoning"] = (
+            f"You are on track to repay this loan in full. "
+            f"Overpaying could save interest, but compare the {rate*100:.1f}% rate "
+            f"against other uses of your surplus."
+        )
+
+    return result
+
+
+def _find_break_even_salary(
+    balance: float, rate: float, threshold: float,
+    repayment_rate: float, write_off_years: int,
+) -> float | None:
+    """Binary search for the salary that exactly clears the loan before write-off."""
+    if balance <= 0:
+        return None
+
+    lo, hi = threshold, 500000
+    for _ in range(50):
+        mid = (lo + hi) / 2
+        annual_repayment = max(0, mid - threshold) * repayment_rate
+        monthly = annual_repayment / 12
+        months, _, _, written_off = _student_loan_projection(
+            balance, rate, monthly, write_off_years,
+        )
+        if written_off > 0:
+            lo = mid
+        else:
+            hi = mid
+        if hi - lo < 100:
+            break
+
+    return round(hi, 0)
 
 
 def _student_loan_projection(
@@ -193,7 +279,6 @@ def _student_loan_projection(
     if balance <= 0:
         return 0, 0.0, 0.0, 0.0
     if monthly_payment <= 0:
-        # No repayment — entire balance written off
         return write_off_years * 12, 0.0, 0.0, balance
 
     monthly_rate = annual_rate / 12
@@ -214,7 +299,6 @@ def _student_loan_projection(
         if remaining <= 0:
             return month, total_interest, total_repaid, 0.0
 
-    # Balance remaining at write-off
     return max_months, total_interest, total_repaid, max(0, remaining)
 
 
@@ -230,10 +314,8 @@ def _analyse_single_debt(debt: dict, high_thresh: float, mod_thresh: float) -> d
     min_pay = debt.get("minimum_payment_monthly", 0)
     dtype = debt.get("type", "unknown")
 
-    # Payoff timeline at minimum payments
     months, total_interest = _payoff_schedule(balance, rate, min_pay)
 
-    # Risk tier
     if rate >= high_thresh:
         risk_tier = "high"
     elif rate >= mod_thresh:
@@ -241,7 +323,6 @@ def _analyse_single_debt(debt: dict, high_thresh: float, mod_thresh: float) -> d
     else:
         risk_tier = "low"
 
-    # Monthly interest cost right now
     current_monthly_interest = balance * rate / 12
 
     return {
@@ -257,8 +338,8 @@ def _analyse_single_debt(debt: dict, high_thresh: float, mod_thresh: float) -> d
         "total_interest_if_minimum": round(total_interest, 2),
         "total_cost": round(balance + total_interest, 2),
         "risk_tier": risk_tier,
-        "avalanche_priority": 0,  # set later
-        "snowball_priority": 0,   # set later
+        "avalanche_priority": 0,
+        "snowball_priority": 0,
     }
 
 
@@ -270,7 +351,7 @@ def _payoff_schedule(balance: float, annual_rate: float, monthly_payment: float)
     if balance <= 0:
         return 0, 0.0
     if monthly_payment <= 0:
-        return 600, balance * annual_rate / 12 * 600  # effectively infinite
+        return 600, balance * annual_rate / 12 * 600
 
     monthly_rate = annual_rate / 12
     remaining = balance
@@ -284,14 +365,13 @@ def _payoff_schedule(balance: float, annual_rate: float, monthly_payment: float)
         principal = monthly_payment - interest
 
         if principal <= 0:
-            # Payment doesn't cover interest — debt is growing
             return max_months, total_interest + (remaining * monthly_rate * (max_months - months))
 
         remaining -= principal
         months += 1
 
     if remaining > 0:
-        total_interest += remaining  # approximate remaining interest
+        total_interest += remaining
 
     return months, round(total_interest, 2)
 
@@ -305,7 +385,6 @@ def _simulate_extra_payments(debts: list[dict], extra_amounts: list[int]) -> lis
     For each extra monthly amount, simulate avalanche payoff and compare
     to minimum-only baseline.
     """
-    # Baseline: minimum payments only
     baseline_months, baseline_interest = _avalanche_payoff(debts, 0)
 
     scenarios = []
@@ -324,13 +403,10 @@ def _simulate_extra_payments(debts: list[dict], extra_amounts: list[int]) -> lis
 def _avalanche_payoff(debts: list[dict], extra_monthly: float) -> tuple[int, float]:
     """
     Simulate avalanche (highest-rate-first) payoff across all debts.
-    Extra money goes to the highest-rate debt first; when one is paid off
-    its payment cascades to the next.
     """
     if not debts:
         return 0, 0.0
 
-    # Work with copies sorted by rate descending
     active = sorted(
         [
             {
@@ -350,33 +426,29 @@ def _avalanche_payoff(debts: list[dict], extra_monthly: float) -> tuple[int, flo
 
     while any(d["balance"] > 0 for d in active) and months < max_months:
         months += 1
-        # Apply interest to all active debts
         for d in active:
             if d["balance"] > 0:
                 interest = d["balance"] * d["rate"] / 12
                 total_interest += interest
                 d["balance"] += interest
 
-        # Pay minimums on all debts
         freed = extra_monthly
         for d in active:
             if d["balance"] > 0:
                 payment = min(d["min_pay"], d["balance"])
                 d["balance"] -= payment
                 if d["balance"] <= 0:
-                    freed += d["min_pay"] - payment  # freed-up minimum
+                    freed += d["min_pay"] - payment
                     d["balance"] = 0
 
-        # Apply extra + freed money to highest-rate debt still active
         for d in active:
             if d["balance"] > 0 and freed > 0:
                 payment = min(freed, d["balance"])
                 d["balance"] -= payment
                 freed -= payment
                 if d["balance"] <= 0:
-                    freed += 0  # already captured
                     d["balance"] = 0
-                break  # only apply to top priority
+                break
 
     return months, round(total_interest, 2)
 

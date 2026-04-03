@@ -243,7 +243,7 @@ def analyse_investments(profile: dict, assumptions: dict, cashflow: dict) -> dic
     pension_adequate = pension_replacement_ratio_net >= 50
 
     # ------------------------------------------------------------------
-    # 6. FA-6: Employer pension match optimisation
+    # 6. FA-6 + T1-2: Employer pension match optimisation with £-quantified ROI
     # ------------------------------------------------------------------
     match_cap = sav.get("pension_employer_match_cap_pct", pension_employer_pct)
     pension_match_analysis = None
@@ -251,20 +251,51 @@ def analyse_investments(profile: dict, assumptions: dict, cashflow: dict) -> dic
         additional_pct = match_cap - pension_personal_pct
         additional_personal = primary_gross * additional_pct
         additional_employer = primary_gross * additional_pct
-        # Net cost after tax relief (higher-rate payer pays 60p per £1)
-        if primary_gross > tax_cfg.get("basic_threshold", 50270):
-            net_cost = additional_personal * 0.60
+
+        # T1-2: Detailed tax relief breakdown
+        basic_thresh = tax_cfg.get("basic_threshold", 50270)
+        is_higher_rate = primary_gross > basic_thresh
+        if is_higher_rate:
+            tax_relief_rate = tax_cfg.get("higher_rate", 0.40)
         else:
-            net_cost = additional_personal * 0.80
+            tax_relief_rate = tax_cfg.get("basic_rate", 0.20)
+
+        tax_relief_amount = additional_personal * tax_relief_rate
+        net_cost = additional_personal - tax_relief_amount
+
+        # NI saving if salary sacrifice
+        ni_rate = tax_cfg.get("national_insurance_rate", 0.08)
+        ni_saving_if_sacrifice = additional_personal * ni_rate
+        net_cost_salary_sacrifice = additional_personal - tax_relief_amount - ni_saving_if_sacrifice
+
+        # Total benefit = employer match + tax relief (+ NI saving if sacrifice)
+        total_benefit_relief_at_source = additional_employer + tax_relief_amount
+        total_benefit_salary_sacrifice = additional_employer + tax_relief_amount + ni_saving_if_sacrifice
+
+        # ROI: benefit per £1 of net cost
+        roi_relief = total_benefit_relief_at_source / net_cost if net_cost > 0 else float("inf")
+        roi_sacrifice = total_benefit_salary_sacrifice / net_cost_salary_sacrifice if net_cost_salary_sacrifice > 0 else float("inf")
 
         pension_match_analysis = {
             "current_personal_pct": round(pension_personal_pct * 100, 1),
             "match_cap_pct": round(match_cap * 100, 1),
             "additional_personal_annual": round(additional_personal, 2),
+            "additional_personal_monthly": round(additional_personal / 12, 2),
             "additional_employer_annual": round(additional_employer, 2),
             "free_money_left_on_table": round(additional_employer, 2),
+            "tax_relief_amount_annual": round(tax_relief_amount, 2),
+            "tax_relief_rate_pct": round(tax_relief_rate * 100, 0),
             "net_cost_after_tax_relief_annual": round(net_cost, 2),
             "net_cost_monthly": round(net_cost / 12, 2),
+            "salary_sacrifice_option": {
+                "ni_saving_annual": round(ni_saving_if_sacrifice, 2),
+                "net_cost_annual": round(net_cost_salary_sacrifice, 2),
+                "net_cost_monthly": round(net_cost_salary_sacrifice / 12, 2),
+                "total_benefit_annual": round(total_benefit_salary_sacrifice, 2),
+                "roi_per_pound": round(roi_sacrifice, 2),
+            },
+            "total_benefit_annual": round(total_benefit_relief_at_source, 2),
+            "roi_per_pound": round(roi_relief, 2),
         }
 
     # ------------------------------------------------------------------

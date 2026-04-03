@@ -57,8 +57,8 @@ def analyse_mortgage(profile: dict, assumptions: dict, cashflow: dict, debt_anal
     max_borrowing = combined_income * income_multiple
 
     # Reduce borrowing capacity for existing debt
-    total_debt_balance = debt_analysis.get("summary", {}).get("total_balance", 0)
-    total_debt_payments = debt_analysis.get("summary", {}).get("total_minimum_monthly", 0)
+    # T1-1: Weight student loan payments by proximity to write-off
+    total_debt_payments = _weighted_debt_payments(debt_analysis, assumptions)
     dti_adjustment = min(total_debt_payments * 12 * 3, max_borrowing * 0.20)
     adjusted_borrowing = max(0, max_borrowing - dti_adjustment)
 
@@ -696,6 +696,39 @@ def _estimate_acquisition_costs(
 # ---------------------------------------------------------------------------
 # Mortgage math
 # ---------------------------------------------------------------------------
+
+def _weighted_debt_payments(debt_analysis: dict, assumptions: dict) -> float:
+    """
+    T1-1: Calculate DTI-weighted monthly debt payments.
+    Student loans near write-off get reduced weight since they won't
+    affect long-term affordability.
+    """
+    sl_dti_cfg = assumptions.get("student_loan_dti", {})
+    thresh_50 = sl_dti_cfg.get("years_to_writeoff_50pct_weight", 10)
+    thresh_25 = sl_dti_cfg.get("years_to_writeoff_25pct_weight", 5)
+
+    total = 0.0
+    for d in debt_analysis.get("debts", []):
+        monthly = d.get("minimum_payment_monthly", 0)
+        dtype = d.get("type", "")
+
+        if dtype in ("student_loan", "student_loan_postgrad") and d.get("will_be_written_off"):
+            years_to_wo = d.get("years_to_write_off")
+            if years_to_wo is not None:
+                if years_to_wo <= thresh_25:
+                    weight = 0.25
+                elif years_to_wo <= thresh_50:
+                    weight = 0.50
+                else:
+                    weight = 1.0
+            else:
+                weight = 0.50  # default reduced weight for write-off loans
+            total += monthly * weight
+        else:
+            total += monthly
+
+    return total
+
 
 def _monthly_repayment(principal: float, annual_rate: float, term_years: int) -> float:
     """Standard amortising mortgage repayment formula."""

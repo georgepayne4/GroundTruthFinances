@@ -143,3 +143,40 @@ expense_benchmarks:
   transport_pct_of_net: 0.12
   food_pct_of_net: 0.11
   discretionary_pct_of_net: 0.15
+
+# T1-1: Life event simulation parameters (previously hardcoded)
+life_event_simulation:
+  surplus_allocation_liquid_pct: 0.60
+  surplus_allocation_investment_pct: 0.40
+  debt_principal_fraction: 0.70
+
+# T1-1: Goal prerequisite rules
+goal_prerequisites:
+  emergency_fund_months_required: 3
+  clear_high_interest_debt_first: true
+
+# T1-3: Surplus deployment effective returns (for ranking)
+surplus_deployment:
+  emergency_fund_effective_return: 0.00    # not a return, but highest priority
+  mortgage_overpayment_return_proxy: 0.048 # saves mortgage rate
+
+# T1-4: Sensitivity analysis scenarios
+sensitivity:
+  property_price_deltas_pct: [-10, -20, 10]
+  retirement_age_deltas: [-2, 2, 5]
+  savings_rate_increases_pct: [5, 10]
+  pension_contribution_increases_pct: [2, 5]
+  mortgage_terms: [25, 30, 35]
+
+# T1-1: Insurance multiplier config
+insurance:
+  life_multiplier_with_dependents: 10
+  life_multiplier_mortgage_only: 5
+  income_protection_pct: 0.60
+  critical_illness_expense_months: 24
+  pension_inadequacy_life_uplift: 1.5    # multiply life cover if pension < 50% replacement
+
+# T1-1: Student loan DTI weighting for mortgage
+student_loan_dti:
+  years_to_writeoff_50pct_weight: 10     # within 10 years: 50% DTI weight
+  years_to_writeoff_25pct_weight: 5      # within 5 years: 25% DTI weight

@@ -5,6 +5,9 @@ Evaluates each financial goal against available surplus, existing savings,
 and time horizon.  Classifies goals as on-track, at-risk, or unreachable,
 suggests required monthly contributions, and calculates "what would it take"
 adjustments for off-track goals (FA-2).
+
+T1-1: Prerequisite logic — emergency fund and high-interest debt must be
+addressed before discretionary goals receive surplus allocation.
 """
 
 from __future__ import annotations
@@ -16,9 +19,13 @@ from typing import Any
 PRIORITY_RANK = {"high": 1, "medium": 2, "low": 3}
 
 
-def analyse_goals(profile: dict, assumptions: dict, cashflow: dict) -> dict[str, Any]:
+def analyse_goals(
+    profile: dict, assumptions: dict, cashflow: dict,
+    debt_analysis: dict | None = None,
+) -> dict[str, Any]:
     """
     For each goal:
+    - Check prerequisites (T1-1)
     - Calculate the gap between current savings and target
     - Determine required monthly saving to hit deadline
     - Classify feasibility given available surplus
@@ -34,8 +41,38 @@ def analyse_goals(profile: dict, assumptions: dict, cashflow: dict) -> dict[str,
     inflation = assumptions.get("inflation", {}).get("general", 0.03)
     age = personal.get("age", 30)
 
+    # T1-1: Prerequisite config
+    prereq_cfg = assumptions.get("goal_prerequisites", {})
+    ef_months_required = prereq_cfg.get("emergency_fund_months_required", 3)
+    clear_high_interest = prereq_cfg.get("clear_high_interest_debt_first", True)
+
     if not goals:
-        return {"goals": [], "summary": _empty_summary()}
+        return {"goals": [], "summary": _empty_summary(), "prerequisites": {}}
+
+    # ------------------------------------------------------------------
+    # T1-1: Check prerequisites
+    # ------------------------------------------------------------------
+    ef = sav.get("emergency_fund", 0)
+    monthly_expenses = cashflow.get("expenses", {}).get("total_monthly", 1)
+    ef_months_current = ef / monthly_expenses if monthly_expenses > 0 else 0
+    ef_adequate = ef_months_current >= ef_months_required
+
+    high_interest_count = 0
+    high_interest_balance = 0
+    if debt_analysis:
+        high_interest_count = debt_analysis.get("summary", {}).get("high_interest_debt_count", 0)
+        high_interest_balance = debt_analysis.get("summary", {}).get("high_interest_total_balance", 0)
+    has_high_interest_debt = clear_high_interest and high_interest_count > 0
+
+    prerequisites = {
+        "emergency_fund_adequate": ef_adequate,
+        "emergency_fund_months_current": round(ef_months_current, 1),
+        "emergency_fund_months_required": ef_months_required,
+        "high_interest_debt_cleared": not has_high_interest_debt,
+        "high_interest_debt_count": high_interest_count,
+        "high_interest_debt_balance": round(high_interest_balance, 2),
+        "all_met": ef_adequate and not has_high_interest_debt,
+    }
 
     # ------------------------------------------------------------------
     # 1. Analyse each goal independently
@@ -44,10 +81,14 @@ def analyse_goals(profile: dict, assumptions: dict, cashflow: dict) -> dict[str,
     lisa_balance = sav.get("lisa_balance", 0)
     for g in goals:
         a = _analyse_single_goal(g, sav, inflation, lisa_balance, age)
+        # T1-1: Mark blocked goals
+        blocked_by = _check_goal_blocked(a, ef_adequate, has_high_interest_debt, ef_months_required)
+        if blocked_by:
+            a["blocked_by"] = blocked_by
         analyses.append(a)
 
     # ------------------------------------------------------------------
-    # 2. Allocate surplus across goals by priority
+    # 2. Allocate surplus across goals by priority (respecting prerequisites)
     # ------------------------------------------------------------------
     allocation = _allocate_surplus(analyses, surplus_monthly)
 
@@ -59,8 +100,11 @@ def analyse_goals(profile: dict, assumptions: dict, cashflow: dict) -> dict[str,
         a["feasibility_with_allocation"] = _assess_feasibility(
             a["remaining_gap"], alloc, a["deadline_months"]
         )
+        # Override to blocked if prerequisites not met
+        if a.get("blocked_by"):
+            a["feasibility_with_allocation"] = "blocked"
         # FA-2: Calculate "what would it take" for off-track goals
-        if a["feasibility_with_allocation"] != "on_track":
+        if a["feasibility_with_allocation"] not in ("on_track",):
             a["what_would_it_take"] = _what_would_it_take(
                 a["remaining_gap"], a["deadline_months"], surplus_monthly, alloc,
             )
@@ -72,20 +116,51 @@ def analyse_goals(profile: dict, assumptions: dict, cashflow: dict) -> dict[str,
     on_track = sum(1 for a in analyses if a["feasibility_with_allocation"] == "on_track")
     at_risk = sum(1 for a in analyses if a["feasibility_with_allocation"] == "at_risk")
     unreachable = sum(1 for a in analyses if a["feasibility_with_allocation"] == "unreachable")
+    blocked = sum(1 for a in analyses if a["feasibility_with_allocation"] == "blocked")
 
     return {
         "goals": analyses,
+        "prerequisites": prerequisites,
         "summary": {
             "total_goals": len(analyses),
             "on_track": on_track,
             "at_risk": at_risk,
             "unreachable": unreachable,
+            "blocked": blocked,
             "total_required_monthly": round(total_required, 2),
             "available_surplus_monthly": round(surplus_monthly, 2),
             "surplus_covers_goals": surplus_monthly >= total_required,
             "shortfall_monthly": round(max(0, total_required - surplus_monthly), 2),
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# T1-1: Prerequisite check
+# ---------------------------------------------------------------------------
+
+def _check_goal_blocked(
+    goal: dict, ef_adequate: bool, has_high_interest_debt: bool,
+    ef_months_required: int,
+) -> list[str] | None:
+    """Check if a goal is blocked by unmet prerequisites."""
+    category = goal.get("category", "general")
+
+    # Safety net goals are never blocked — they ARE the prerequisite
+    if category == "safety_net":
+        return None
+
+    blockers = []
+    if not ef_adequate:
+        blockers.append(
+            f"Emergency fund below {ef_months_required} months — build safety net before pursuing this goal"
+        )
+    if has_high_interest_debt:
+        blockers.append(
+            "High-interest debt outstanding — clear this before allocating to discretionary goals"
+        )
+
+    return blockers if blockers else None
 
 
 # ---------------------------------------------------------------------------
@@ -106,10 +181,8 @@ def _analyse_single_goal(
 
     deadline_months = max(1, deadline_years * 12)
 
-    # Adjust target for inflation if deadline > 1 year
     inflation_adjusted_target = target * ((1 + inflation) ** deadline_years)
 
-    # Determine current progress toward this goal
     current_savings = _estimate_current_progress(goal, savings)
 
     # LISA bonus projection for property goals
@@ -221,13 +294,9 @@ def _what_would_it_take(
     required_monthly = gap / deadline_months
     shortfall_monthly = max(0, required_monthly - allocated)
 
-    # Option 1: increase income by enough to close the gap
     income_increase_needed = shortfall_monthly
-
-    # Option 2: reduce expenses by enough
     expense_reduction_needed = shortfall_monthly
 
-    # Option 3: extend deadline until current allocation closes the gap
     if allocated > 0:
         extended_months = int(gap / allocated) + 1
         extended_years = round(extended_months / 12, 1)
@@ -235,7 +304,6 @@ def _what_would_it_take(
         extended_months = None
         extended_years = None
 
-    # Option 4: combined (half income increase, half expense cut)
     combined_each = shortfall_monthly / 2
 
     return {
@@ -249,42 +317,50 @@ def _what_would_it_take(
 
 
 # ---------------------------------------------------------------------------
-# Surplus allocation
+# Surplus allocation (T1-1: respects prerequisite ordering)
 # ---------------------------------------------------------------------------
 
 def _allocate_surplus(analyses: list[dict], surplus: float) -> list[float]:
     """
     Allocate available surplus across goals using a priority-weighted scheme.
+    Safety net goals always get first allocation (prerequisite logic).
     """
     allocations = [0.0] * len(analyses)
     remaining = max(0, surplus)
 
-    indexed = sorted(enumerate(analyses), key=lambda x: x[1]["priority_rank"])
+    # Phase 1: Allocate to safety_net goals first (prerequisites)
+    safety_indices = [i for i, a in enumerate(analyses) if a.get("category") == "safety_net"]
+    other_indices = [i for i, a in enumerate(analyses) if a.get("category") != "safety_net"]
 
-    current_tier = None
-    tier_indices = []
+    if safety_indices and remaining > 0:
+        remaining = _allocate_to_indices(analyses, allocations, safety_indices, remaining)
 
-    for idx, a in indexed:
-        if a["priority_rank"] != current_tier:
-            if tier_indices and remaining > 0:
-                remaining = _allocate_tier(analyses, allocations, tier_indices, remaining)
-            tier_indices = []
-            current_tier = a["priority_rank"]
-        tier_indices.append(idx)
+    # Phase 2: Allocate remaining to non-blocked goals by priority
+    unblocked = [i for i in other_indices if not analyses[i].get("blocked_by")]
+    if unblocked and remaining > 0:
+        indexed = sorted(unblocked, key=lambda i: analyses[i]["priority_rank"])
 
-    if tier_indices and remaining > 0:
-        _allocate_tier(analyses, allocations, tier_indices, remaining)
+        current_tier = None
+        tier_indices = []
+        for idx in indexed:
+            if analyses[idx]["priority_rank"] != current_tier:
+                if tier_indices and remaining > 0:
+                    remaining = _allocate_to_indices(analyses, allocations, tier_indices, remaining)
+                tier_indices = []
+                current_tier = analyses[idx]["priority_rank"]
+            tier_indices.append(idx)
+
+        if tier_indices and remaining > 0:
+            _allocate_to_indices(analyses, allocations, tier_indices, remaining)
 
     return allocations
 
 
-def _allocate_tier(
-    analyses: list[dict],
-    allocations: list[float],
-    indices: list[int],
-    budget: float,
+def _allocate_to_indices(
+    analyses: list[dict], allocations: list[float],
+    indices: list[int], budget: float,
 ) -> float:
-    """Allocate budget proportionally within a priority tier. Returns remaining budget."""
+    """Allocate budget proportionally within a set of goal indices. Returns remaining."""
     total_needed = sum(analyses[i]["required_monthly"] for i in indices)
     if total_needed <= 0:
         return budget
@@ -306,6 +382,7 @@ def _empty_summary() -> dict:
         "on_track": 0,
         "at_risk": 0,
         "unreachable": 0,
+        "blocked": 0,
         "total_required_monthly": 0,
         "available_surplus_monthly": 0,
         "surplus_covers_goals": True,
