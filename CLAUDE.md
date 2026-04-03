@@ -29,6 +29,12 @@ See `roadmap.md` for the full v5+ plan.
 - No speculative abstractions — but design interfaces that can grow.
 - Import ordering: stdlib -> third-party -> local. Enforced by isort (when CI is set up).
 
+## Language and Tooling
+
+- Python is the current engine language but not a constraint. If another language or tool is demonstrably better for a component (e.g., TypeScript for web frontend, Rust for computation-heavy simulation, Go for API performance), use it with justification.
+- Justify means: state what Python lacks and what the alternative provides. No change for novelty.
+- The engine core should remain cohesive — don't fragment into 5 languages. But a polyglot stack with clear boundaries (e.g., Python engine + TypeScript UI + Go API gateway) is fine.
+
 ## Deprecation Policy
 
 - No deprecation warnings until the project has external consumers (v5.3 API).
@@ -124,6 +130,17 @@ See `roadmap.md` for the phased evolution toward API, database, and web UI.
 - Work on `master` directly until the platform reaches deployable state.
 - Switch to feature branches when scope warrants JIRA-style tickets.
 
+## Session Continuity
+
+- Before a session ends or when usage limits approach, write a `SESSION.md` file in the project root capturing:
+  - **Last completed item** (e.g., "TD-06 done, TD-07 in progress")
+  - **Current working state** (files modified but uncommitted, branch state)
+  - **Next action** (exact next step to resume, not vague)
+  - **Blockers or decisions pending** (anything needing user input)
+- This file is the handoff document. A new session reads it first and resumes without asking "where were we?"
+- Keep it short — a checklist, not an essay. Overwrite each session, don't append.
+- `SESSION.md` is a working file. Add to `.gitignore`.
+
 ## Version Cadence
 
-Target: one version per month. Rapid development, high quality. Don't compromise standards for speed — but don't over-engineer either. Ship working increments.
+Versions are roadmap milestones, not calendar deadlines. Push through the roadmap session by session. Push and switch to branch methodology when the platform reaches deployable state. Ship working increments.
