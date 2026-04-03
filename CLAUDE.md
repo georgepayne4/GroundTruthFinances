@@ -3,7 +3,7 @@
 ## Project Overview
 
 UK personal financial planning engine. Python, YAML-driven, CLI-first.
-17 engine modules, ~7,600 lines. See `roadmap.md` for the full v5+ plan.
+See `roadmap.md` for the full v5+ plan.
 
 ## Commit Rules
 
@@ -22,16 +22,22 @@ UK personal financial planning engine. Python, YAML-driven, CLI-first.
 ## Code Standards
 
 - Production-grade. Write code as if shipping to thousands of users.
-- Match existing patterns: pure functions (dict in, dict out), `_private` helpers, docstrings on public functions.
-- All magic numbers in `config/assumptions.yaml`, not in code.
+- Pure functions (dict in, dict out). `_private` helpers. Docstrings on public functions only.
+- All magic numbers in `config/assumptions.yaml`, not in code. Assumptions.yaml is the single source of truth — never duplicate config values in code or other files.
 - New profile fields are always optional with sensible defaults (backward compatibility).
-- Think at scale: modular, testable, extensible. No shortcuts that create tech debt.
+- No dead code. Delete unused functions, imports, and variables immediately. Never comment out code.
 - No speculative abstractions — but design interfaces that can grow.
-- Best practice code style for a production Python project. Prioritise readability, consistency, and maintainability.
+- Import ordering: stdlib -> third-party -> local. Enforced by isort (when CI is set up).
+
+## Deprecation Policy
+
+- No deprecation warnings until the project has external consumers (v5.3 API).
+- Remove immediately. No commented-out code, no `_deprecated_` prefixes, no shims.
+- When external API exists: one version deprecation notice, then remove.
 
 ## Error Handling
 
-- Custom exceptions in `engine/exceptions.py`. Use the hierarchy:
+- Custom exceptions in `engine/exceptions.py`. Hierarchy:
   - `GroundTruthError` (base) -> `ProfileError`, `AssumptionError`, `CalculationError`, `ReportError`
   - `ProfileError` -> `MissingSectionError`, `InvalidFieldError`
 - Validation layer (`validator.py`) handles soft errors via flags — never raise for recoverable issues.
@@ -39,14 +45,34 @@ UK personal financial planning engine. Python, YAML-driven, CLI-first.
 - Never silently swallow exceptions. Log and re-raise or handle explicitly.
 - At system boundaries (YAML load, file write): catch specific exceptions, wrap in domain exceptions.
 
+## Input Validation
+
+- All inputs must be validated before processing. This applies to:
+  - Profile YAML (via `validator.py`)
+  - Assumptions YAML (schema validation — TD-09)
+  - Future: API request bodies (via Pydantic models)
+- Never trust input data in engine modules. Validator ensures completeness; engine can assert.
+
 ## Logging
 
 - Every engine module has `logger = logging.getLogger(__name__)`.
-- `main.py` configures logging: file handler (DEBUG to `outputs/engine.log`), optional console (`--verbose`).
-- Use `logger.info()` for module entry/exit and key metrics.
-- Use `logger.debug()` for intermediate calculation detail.
-- Use `logger.warning()` for recoverable anomalies.
+- `main.py` configures: file handler (DEBUG -> `outputs/engine.log`), optional console (`--verbose`).
+- `logger.info()` for module entry/exit and key metrics.
+- `logger.debug()` for intermediate calculation detail.
+- `logger.warning()` for recoverable anomalies.
 - Never use `print()` for diagnostic output — `print()` is the CLI user interface only.
+
+## Security
+
+- Never log sensitive financial data (balances, income, names) at INFO level. PII only at DEBUG.
+- No credentials, API keys, or personal data in committed files.
+- `george_input.yaml` must never be committed.
+
+## Module Boundaries
+
+- Modules must not import `_private` functions from other modules.
+- Known violation: `life_events.py` imports `mortgage._monthly_repayment`. Fix by extracting to shared utility.
+- Public API per module = the single top-level function. Everything else is private.
 
 ## Assumptions Config
 
@@ -68,8 +94,13 @@ All financial logic is UK-specific until explicitly told otherwise. Flag anythin
 - Very concise. No preamble, no filler. Lead with action.
 - Brief recap after work (1-2 lines). No full justifications.
 - Minimise token usage — user is on Claude Pro with Opus usage caps.
-- For simple/mechanical tasks, consider whether lower effort is appropriate to conserve quota.
 - Maximise work output per session. Batch efficiently.
+
+## Model Usage Guidance
+
+- **Opus** — Architecture decisions, financial calculation logic, new module design, complex refactors
+- **Sonnet** — Mechanical tasks: renaming, formatting, repetitive edits, running tests, simple bug fixes
+- Use `/compact` or `/clear` to reduce context when switching tasks
 
 ## Architecture Context
 

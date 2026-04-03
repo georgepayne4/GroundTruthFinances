@@ -220,7 +220,8 @@ def analyse_cashflow(profile: dict, assumptions: dict) -> dict[str, Any]:
     if self_employment_info:
         result["self_employment"] = self_employment_info
 
-    logger.info("Cashflow: net=%.0f/mo, surplus=%.0f/mo, savings_rate=%.1f%%", net_monthly, surplus_monthly, savings_rate)
+    logger.info("Cashflow analysis complete")
+    logger.debug("Cashflow: net=%.0f/mo, surplus=%.0f/mo, savings_rate=%.1f%%", net_monthly, surplus_monthly, savings_rate)
 
     # T2-1: Partner/household summary
     if partner:

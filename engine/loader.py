@@ -41,7 +41,7 @@ def load_profile(path: str | Path) -> dict[str, Any]:
     """Load and normalise a user financial profile."""
     raw = load_yaml(path)
     profile = _normalise_profile(raw)
-    logger.info("Profile loaded: %s (age %s)", profile.get("personal", {}).get("name", "Unknown"), profile.get("personal", {}).get("age", "?"))
+    logger.info("Profile loaded: %d sections", len([k for k in profile if not k.startswith("_")]))
     return profile
 
 
