@@ -14,7 +14,10 @@ suitable for client delivery. Produces Markdown output with:
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 
 def generate_narrative(report: dict) -> str:

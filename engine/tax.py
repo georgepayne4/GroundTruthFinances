@@ -9,6 +9,10 @@ T2-2: Capital gains tax and dividend tax calculations.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def calculate_income_tax(gross_annual: float, tax_cfg: dict) -> float:
     """Calculate income tax using progressive bands."""

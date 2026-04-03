@@ -9,10 +9,15 @@ Includes estate analysis and review schedule (FA-5, FA-7).
 from __future__ import annotations
 
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+import engine
+
+logger = logging.getLogger(__name__)
 
 
 def assemble_report(
@@ -40,7 +45,7 @@ def assemble_report(
         "meta": {
             "report_type": "GroundTruth Financial Health Report",
             "generated_at": datetime.now(timezone.utc).isoformat(),
-            "engine_version": "3.0.0",
+            "engine_version": engine.__version__,
             "profile_name": personal.get("name", "Unknown"),
             "profile_age": personal.get("age"),
         },

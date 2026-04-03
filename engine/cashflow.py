@@ -10,9 +10,12 @@ Includes spending benchmark comparison (FA-10).
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from engine.tax import calculate_income_tax, calculate_national_insurance
+
+logger = logging.getLogger(__name__)
 
 
 def analyse_cashflow(profile: dict, assumptions: dict) -> dict[str, Any]:
@@ -216,6 +219,8 @@ def analyse_cashflow(profile: dict, assumptions: dict) -> dict[str, Any]:
         result["spending_benchmarks"] = spending_benchmarks
     if self_employment_info:
         result["self_employment"] = self_employment_info
+
+    logger.info("Cashflow: net=%.0f/mo, surplus=%.0f/mo, savings_rate=%.1f%%", net_monthly, surplus_monthly, savings_rate)
 
     # T2-1: Partner/household summary
     if partner:

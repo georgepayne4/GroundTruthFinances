@@ -14,9 +14,12 @@ Supports:
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from engine.mortgage import _monthly_repayment
+
+logger = logging.getLogger(__name__)
 
 
 def simulate_life_events(

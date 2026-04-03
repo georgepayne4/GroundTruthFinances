@@ -20,6 +20,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 
@@ -39,10 +40,26 @@ from engine.estate import analyse_estate
 from engine.sensitivity import run_sensitivity
 from engine.report import assemble_report, save_report
 from engine.narrative import generate_narrative
+import engine
+
+logger = logging.getLogger(__name__)
 
 
 def main() -> None:
     args = parse_args()
+
+    # Configure logging: file always gets DEBUG, console gets WARNING (engine prints are the UI)
+    log_dir = Path(__file__).resolve().parent / "outputs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    handlers = [logging.FileHandler(log_dir / "engine.log", encoding="utf-8")]
+    if args.verbose:
+        handlers.append(logging.StreamHandler(sys.stderr))
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        handlers=handlers,
+    )
+    logger.info("GroundTruth engine v%s starting", engine.__version__)
 
     project_root = Path(__file__).resolve().parent
 
@@ -329,6 +346,7 @@ def main() -> None:
     )
 
     saved_path = save_report(report, output_path)
+    logger.info("Report saved to %s", saved_path)
     print(f"\nReport saved to: {saved_path}")
 
     # T3-1: Generate narrative report
@@ -336,6 +354,8 @@ def main() -> None:
     narrative = generate_narrative(report)
     narrative_path.parent.mkdir(parents=True, exist_ok=True)
     narrative_path.write_text(narrative, encoding="utf-8")
+    logger.info("Narrative report saved to %s", narrative_path)
+    logger.info("Engine run complete — score: %s", scoring_result.get("overall_score", "N/A"))
     print(f"Narrative report: {narrative_path}")
     print("Done.")
 
@@ -355,6 +375,12 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         help="Path to the assumptions YAML file (default: config/assumptions.yaml)",
+    )
+    parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        default=False,
+        help="Enable verbose console logging (DEBUG level)",
     )
     return parser.parse_args()
 

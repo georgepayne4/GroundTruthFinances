@@ -17,8 +17,11 @@ Produces written insights covering all 30 improvement areas including:
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def generate_insights(

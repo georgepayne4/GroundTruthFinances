@@ -8,9 +8,12 @@ flag with severity, message, and suggested action.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field, asdict
 from enum import Enum
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -53,6 +56,9 @@ def validate_profile(profile: dict, assumptions: dict) -> list[ValidationFlag]:
     flags.extend(_check_mortgage(profile, assumptions))
     flags.extend(_check_cross_field_consistency(profile, assumptions))
     flags.extend(_check_assumptions_staleness(assumptions))
+    errors = sum(1 for f in flags if f.severity == Severity.ERROR)
+    warnings = sum(1 for f in flags if f.severity == Severity.WARNING)
+    logger.info("Validation complete: %d errors, %d warnings, %d info", errors, warnings, len(flags) - errors - warnings)
     return flags
 
 

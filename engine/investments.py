@@ -18,6 +18,7 @@ Comprehensive investment analysis including:
 
 from __future__ import annotations
 
+import logging
 import math
 from typing import Any
 
@@ -26,6 +27,8 @@ from engine.tax import (
     calculate_capital_gains_tax,
     calculate_dividend_tax,
 )
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------

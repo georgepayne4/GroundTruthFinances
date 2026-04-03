@@ -13,7 +13,10 @@ inputs and comparing outcomes to the baseline.  Built-in scenarios:
 from __future__ import annotations
 
 import copy
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from engine.cashflow import analyse_cashflow
 from engine.investments import analyse_investments

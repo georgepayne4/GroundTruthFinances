@@ -12,7 +12,10 @@ addressed before discretionary goals receive surplus allocation.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 # Priority ordering for allocation

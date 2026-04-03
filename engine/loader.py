@@ -8,11 +8,16 @@ and provides accessor helpers used by every downstream module.
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from engine.exceptions import ProfileError, AssumptionError
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -24,10 +29,11 @@ def load_yaml(path: str | Path) -> dict[str, Any]:
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(f"YAML file not found: {path}")
+    logger.debug("Loading YAML: %s", path)
     with open(path, "r", encoding="utf-8") as fh:
         data = yaml.safe_load(fh)
     if not isinstance(data, dict):
-        raise ValueError(f"Expected a YAML mapping at top level, got {type(data).__name__}")
+        raise ProfileError(f"Expected a YAML mapping at top level, got {type(data).__name__}")
     return data
 
 
@@ -35,6 +41,7 @@ def load_profile(path: str | Path) -> dict[str, Any]:
     """Load and normalise a user financial profile."""
     raw = load_yaml(path)
     profile = _normalise_profile(raw)
+    logger.info("Profile loaded: %s (age %s)", profile.get("personal", {}).get("name", "Unknown"), profile.get("personal", {}).get("age", "?"))
     return profile
 
 
@@ -42,7 +49,9 @@ def load_assumptions(path: str | Path | None = None) -> dict[str, Any]:
     """Load the assumptions file.  Falls back to bundled default."""
     if path is None:
         path = Path(__file__).resolve().parent.parent / "config" / "assumptions.yaml"
-    return load_yaml(path)
+    data = load_yaml(path)
+    logger.info("Assumptions loaded: tax year %s", data.get("tax_year", "unknown"))
+    return data
 
 
 # ---------------------------------------------------------------------------
