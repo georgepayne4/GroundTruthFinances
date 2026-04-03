@@ -1181,23 +1181,23 @@ The v3 engine covers the core analysis well. The improvements below target the g
 
 ## IMPLEMENTATION ORDER
 
-### Wave 1 — Tier 1 (highest impact)
+### Wave 1 — Tier 1 (highest impact) [DONE]
 1. **T1-1** Cross-module integration layer
 2. **T1-2** £-quantified tax optimisation
 3. **T1-3** Surplus optimisation engine
 4. **T1-4** User-choice sensitivity analysis
 5. **T1-5** Student loan write-off intelligence
 
-### Wave 2 — Tier 2 (key gaps)
+### Wave 2 — Tier 2 (key gaps) [DONE]
 6. **T2-1** Partner / household mode
 7. **T2-2** Capital gains tax and dividend tax
 8. **T2-3** Cost-benefit on every recommendation
 9. **T2-4** Enhanced life simulation
 10. **T2-5** Move all hardcoded values to assumptions.yaml
 
-### Wave 3 — Tier 3 (polish)
+### Wave 3 — Tier 3 (polish) [DONE]
 11. **T3-1** Narrative report generation
-12. **T3-2** Goal sequencing with prerequisite logic
+12. **T3-2** Goal sequencing with prerequisite logic (done in T1-1)
 13. **T3-3** Rebalancing triggers and drift monitoring
 14. **T3-4** Spending trend analysis and behavioural nudges
 15. **T3-5** Regulatory and policy-linked limits
