@@ -16,6 +16,7 @@ from typing import Any
 import yaml
 
 from engine.exceptions import ProfileError, AssumptionError
+from engine.schemas import validate_assumptions
 
 logger = logging.getLogger(__name__)
 
@@ -46,10 +47,14 @@ def load_profile(path: str | Path) -> dict[str, Any]:
 
 
 def load_assumptions(path: str | Path | None = None) -> dict[str, Any]:
-    """Load the assumptions file.  Falls back to bundled default."""
+    """Load and validate the assumptions file. Falls back to bundled default."""
     if path is None:
         path = Path(__file__).resolve().parent.parent / "config" / "assumptions.yaml"
     data = load_yaml(path)
+    try:
+        validate_assumptions(data)
+    except Exception as e:
+        raise AssumptionError(f"Assumptions validation failed: {e}") from e
     logger.info("Assumptions loaded: tax year %s", data.get("tax_year", "unknown"))
     return data
 
