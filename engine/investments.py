@@ -640,7 +640,7 @@ def _glide_path_projection(
 ) -> dict:
     """Project portfolio with age-based de-risking."""
     if not glide_path_cfg:
-        return {"applicable": False}
+        return {"applicable": False, "reason": "No glide path configuration."}
 
     years_to_retirement = max(1, retirement_age - age)
     timeline = []

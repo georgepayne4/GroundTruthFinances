@@ -132,11 +132,10 @@ def analyse_cashflow(profile: dict, assumptions: dict) -> dict[str, Any]:
     bonus_scenarios = None
     if bonus_expected > 0 or bonus_low > 0 or bonus_high > 0:
         bonus_scenarios = {}
+        base_tax = calculate_income_tax(taxable_primary, tax_cfg)
         for label, bonus in [("low", bonus_low), ("expected", bonus_expected), ("high", bonus_high)]:
             if bonus > 0:
-                bonus_tax = bonus * (tax_cfg.get("higher_rate", 0.40)
-                                     if primary_gross > tax_cfg.get("basic_threshold", 50270)
-                                     else tax_cfg.get("basic_rate", 0.20))
+                bonus_tax = calculate_income_tax(taxable_primary + bonus, tax_cfg) - base_tax
                 bonus_net = bonus - bonus_tax
                 bonus_scenarios[label] = {
                     "gross": round(bonus, 2),

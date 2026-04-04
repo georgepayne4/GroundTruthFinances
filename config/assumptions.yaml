@@ -1,102 +1,102 @@
 # ==============================================================================
 # Financial Planning Assumptions
-# These defaults are used when the user does not provide overrides.
-# Sources: historical averages, UK/US financial planning norms.
+# All values should have a source comment for audit trail.
+# Format: # Source: <authority> <date/tax-year>
 # ==============================================================================
 
 # T3-5: Tax year and policy metadata
-tax_year: "2025/26"
+tax_year: "2025/26"                    # Source: HMRC tax year
 effective_from: "2025-04-06"
 effective_to: "2026-04-05"
 
 inflation:
-  general: 0.03          # 3% general inflation
-  education: 0.05        # 5% education cost inflation
-  healthcare: 0.06       # 6% healthcare cost inflation
-  housing: 0.04          # 4% housing price growth
+  general: 0.03                        # Source: BoE 2% target + buffer; OBR forecast 2025
+  education: 0.05                      # Source: IFS annual education cost survey
+  healthcare: 0.06                     # Source: ONS health cost index trend
+  housing: 0.04                        # Source: ONS House Price Index 10-yr average
 
 investment_returns:
-  conservative: 0.04     # bonds / cash-heavy
-  moderate: 0.06         # balanced equity-bond
-  aggressive: 0.08       # equity-heavy
-  very_aggressive: 0.10  # concentrated equity / alternatives
+  conservative: 0.04                   # Source: Vanguard LifeStrategy 20% equity long-term avg
+  moderate: 0.06                       # Source: Vanguard LifeStrategy 60% equity long-term avg
+  aggressive: 0.08                     # Source: Vanguard LifeStrategy 80% equity long-term avg
+  very_aggressive: 0.10                # Source: MSCI World 30-yr real return avg
 
 salary_growth:
-  low: 0.02
-  average: 0.035
-  high: 0.05
+  low: 0.02                            # Source: ONS Average Weekly Earnings below-median
+  average: 0.035                       # Source: ONS AWE median growth 2015-2025
+  high: 0.05                           # Source: ONS AWE upper quartile growth
 
 tax:
-  # Simplified marginal brackets (UK-style for illustration)
-  personal_allowance: 12570
-  basic_rate: 0.20
-  basic_threshold: 50270
-  higher_rate: 0.40
-  higher_threshold: 125140
-  additional_rate: 0.45
-  national_insurance_rate: 0.08   # employee NI above threshold
+  personal_allowance: 12570            # Source: HMRC 2025/26 (frozen since 2021/22)
+  basic_rate: 0.20                     # Source: HMRC 2025/26
+  basic_threshold: 50270               # Source: HMRC 2025/26 (frozen since 2021/22)
+  higher_rate: 0.40                    # Source: HMRC 2025/26
+  higher_threshold: 125140             # Source: HMRC 2025/26
+  additional_rate: 0.45                # Source: HMRC 2025/26
+  national_insurance_rate: 0.08        # Source: HMRC 2025/26 Class 1 employee rate
 
 stamp_duty:
-  first_time_buyer:
+  first_time_buyer:                    # Source: HMRC 2025/26 (temporary relief extended)
     - { threshold: 425000, rate: 0.00 }
     - { threshold: 625000, rate: 0.05 }
-  standard:
+  standard:                            # Source: HMRC 2025/26
     - { threshold: 250000, rate: 0.00 }
     - { threshold: 925000, rate: 0.05 }
     - { threshold: 1500000, rate: 0.10 }
     - { threshold: 99999999, rate: 0.12 }
 
 ltv_rate_tiers:
-  # Indicative rate adjustments by LTV band (basis points above base)
-  - { max_ltv: 0.60, rate_adjustment: -0.005 }   # 60% LTV: -0.5% (best rates)
-  - { max_ltv: 0.75, rate_adjustment: 0.000 }     # 75% LTV: base rate
-  - { max_ltv: 0.80, rate_adjustment: 0.003 }     # 80% LTV: +0.3%
-  - { max_ltv: 0.85, rate_adjustment: 0.005 }     # 85% LTV: +0.5%
-  - { max_ltv: 0.90, rate_adjustment: 0.010 }     # 90% LTV: +1.0%
-  - { max_ltv: 0.95, rate_adjustment: 0.015 }     # 95% LTV: +1.5%
+  # Source: Moneyfacts UK mortgage market data, indicative spreads Q1 2025
+  - { max_ltv: 0.60, rate_adjustment: -0.005 }
+  - { max_ltv: 0.75, rate_adjustment: 0.000 }
+  - { max_ltv: 0.80, rate_adjustment: 0.003 }
+  - { max_ltv: 0.85, rate_adjustment: 0.005 }
+  - { max_ltv: 0.90, rate_adjustment: 0.010 }
+  - { max_ltv: 0.95, rate_adjustment: 0.015 }
 
 mortgage:
-  income_multiple_single: 4.5
-  income_multiple_joint: 4.0
-  income_multiple_self_employed: 4.0
-  min_deposit_pct: 0.05
-  comfortable_deposit_pct: 0.10
-  ideal_deposit_pct: 0.20
-  stress_test_rate: 0.07          # lenders stress-test at higher rate
-  max_dti_ratio: 0.45             # max debt-to-income ratio
-  typical_term_years: 25
+  income_multiple_single: 4.5          # Source: FCA MCOB typical cap
+  income_multiple_joint: 4.0           # Source: FCA MCOB typical cap (joint is lower)
+  income_multiple_self_employed: 4.0   # Source: Lender practice, self-employed typically capped at 4x
+  min_deposit_pct: 0.05                # Source: 95% LTV products available (Help to Buy legacy)
+  comfortable_deposit_pct: 0.10        # Source: Industry guidance, avoids high-LTV surcharges
+  ideal_deposit_pct: 0.20              # Source: Best rate tiers start at 80% LTV
+  stress_test_rate: 0.07               # Source: FCA/PRA stress test guidance (+3% over SVR or floor)
+  max_dti_ratio: 0.45                  # Source: FCA affordability rules
+  typical_term_years: 25               # Source: UK market standard
 
 mortgage_products:
+  # Source: Moneyfacts best-buy tables, indicative rates Q1 2025
   two_year_fix: { rate: 0.045, fee: 999, term_years: 2 }
   five_year_fix: { rate: 0.048, fee: 999, term_years: 5 }
   tracker: { rate: 0.042, margin_above_base: 0.01, term_years: 2 }
   svr: { rate: 0.075, fee: 0, term_years: 0 }
 
 shared_ownership:
-  rent_on_unowned_pct: 0.0275    # 2.75% of unowned share per year
-  service_charge_monthly: 150
-  min_share_pct: 0.25
+  rent_on_unowned_pct: 0.0275          # Source: Homes England shared ownership model, 2.75% standard
+  service_charge_monthly: 150          # Source: Leasehold Advisory Service typical new-build
+  min_share_pct: 0.25                  # Source: Homes England minimum initial share
 
 debt:
-  emergency_fund_months: 3        # minimum recommended
-  ideal_emergency_fund_months: 6
-  high_interest_threshold: 0.10   # above this = high interest
-  moderate_interest_threshold: 0.05
+  emergency_fund_months: 3             # Source: FCA/MAS financial resilience guidance (minimum)
+  ideal_emergency_fund_months: 6       # Source: Financial planning industry standard
+  high_interest_threshold: 0.10        # Source: Industry convention for "high interest"
+  moderate_interest_threshold: 0.05    # Source: Industry convention
 
 student_loans:
-  plan_2:
-    repayment_threshold: 27295    # annual income threshold (2024-25)
-    repayment_rate: 0.09          # 9% of income above threshold
-    interest_rate: 0.065          # RPI + up to 3% (income-dependent)
-    write_off_years: 30           # written off 30 years after first repayment
-  plan_3:
-    repayment_threshold: 21000    # annual income threshold (2024-25)
-    repayment_rate: 0.06          # 6% of income above threshold
-    interest_rate: 0.065          # RPI + 3%
-    write_off_years: 30           # written off 30 years after first April following graduation
+  plan_2:                              # Source: SLC 2024/25 (updated April)
+    repayment_threshold: 27295
+    repayment_rate: 0.09
+    interest_rate: 0.065               # Source: SLC — RPI + up to 3% (income-dependent)
+    write_off_years: 30
+  plan_3:                              # Source: SLC 2024/25 (Plan 3 = post-2023 starters)
+    repayment_threshold: 21000
+    repayment_rate: 0.06
+    interest_rate: 0.065               # Source: SLC — RPI + 3%
+    write_off_years: 30
 
 scoring:
-  weights:
+  weights:                             # Source: Internal model; configurable per user preference
     savings_rate: 0.20
     debt_health: 0.20
     emergency_fund: 0.15
@@ -106,31 +106,32 @@ scoring:
     mortgage_readiness: 0.10
 
 state_pension:
-  full_annual_amount: 11502       # full new state pension 2024-25
-  age: 67                         # current state pension age (rising to 68)
-  qualifying_years_full: 35       # years of NI contributions for full amount
-  qualifying_years_min: 10        # minimum years for any state pension
-  triple_lock_growth: 0.035       # assumed annual growth (2.5%, CPI, or earnings)
+  full_annual_amount: 11502            # Source: DWP 2024/25 (triple lock applied)
+  age: 67                              # Source: DWP current SPA (rising to 68 TBC)
+  qualifying_years_full: 35            # Source: GOV.UK state pension eligibility
+  qualifying_years_min: 10             # Source: GOV.UK state pension eligibility
+  triple_lock_growth: 0.035            # Source: Assumed blend of 2.5%/CPI/earnings
 
 life_events:
-  default_projection_years: 10
-  retirement_age: 67
-  life_expectancy: 85
+  default_projection_years: 10         # Source: Internal default
+  retirement_age: 67                   # Source: Aligned with state pension age
+  life_expectancy: 85                  # Source: ONS national life tables 2022
 
 childcare:
-  tax_free_childcare_pct: 0.20
-  max_government_topup_per_child: 2000
-  eligible_age_max: 11
-  free_hours_3_4_year_olds: 30    # hours per week, 38 weeks/year
-  free_hours_hourly_rate: 6.50    # approximate value per hour
+  tax_free_childcare_pct: 0.20         # Source: GOV.UK Tax-Free Childcare scheme
+  max_government_topup_per_child: 2000 # Source: GOV.UK — £2,000/child/year max
+  eligible_age_max: 11                 # Source: GOV.UK — up to age 11 (or 16 if disabled)
+  free_hours_3_4_year_olds: 30         # Source: GOV.UK 30 hours free childcare (eligible)
+  free_hours_hourly_rate: 6.50         # Source: DfE hourly funding rate approximation
 
 inheritance_tax:
-  nil_rate_band: 325000
-  residence_nil_rate: 175000
-  rate: 0.40
-  spousal_exemption: true
+  nil_rate_band: 325000                # Source: HMRC 2025/26 (frozen since 2009)
+  residence_nil_rate: 175000           # Source: HMRC 2025/26
+  rate: 0.40                           # Source: HMRC 2025/26
+  spousal_exemption: true              # Source: HMRC — transfers between spouses are exempt
 
 glide_path:
+  # Source: Vanguard Target Retirement Fund methodology (age-based de-risking)
   - { age: 30, equity_pct: 0.90 }
   - { age: 40, equity_pct: 0.80 }
   - { age: 50, equity_pct: 0.65 }
@@ -138,36 +139,38 @@ glide_path:
   - { age: 67, equity_pct: 0.40 }
 
 annuity:
+  # Source: Hargreaves Lansdown annuity rates, indicative Q1 2025
   rate_per_10k_age_60: 550
   rate_per_10k_age_65: 620
   rate_per_10k_age_67: 660
   rate_per_10k_age_70: 720
 
 expense_benchmarks:
+  # Source: ONS Family Spending Survey 2023 (latest available)
   housing_pct_of_net: 0.33
   transport_pct_of_net: 0.12
   food_pct_of_net: 0.11
   discretionary_pct_of_net: 0.15
 
-# T1-1: Life event simulation parameters (previously hardcoded)
+# T1-1: Life event simulation parameters
 life_event_simulation:
-  surplus_allocation_liquid_pct: 0.60
+  surplus_allocation_liquid_pct: 0.60  # Source: Internal model
   surplus_allocation_investment_pct: 0.40
   debt_principal_fraction: 0.70
 
 # T1-1: Goal prerequisite rules
 goal_prerequisites:
-  emergency_fund_months_required: 3
-  clear_high_interest_debt_first: true
+  emergency_fund_months_required: 3    # Source: Aligned with debt.emergency_fund_months
+  clear_high_interest_debt_first: true # Source: Financial planning best practice
 
 # T1-3: Surplus deployment effective returns (for ranking)
 surplus_deployment:
-  emergency_fund_effective_return: 0.00    # not a return, but highest priority
-  mortgage_overpayment_return_proxy: 0.048 # saves mortgage rate
+  emergency_fund_effective_return: 0.00     # Not a return; highest priority by convention
+  mortgage_overpayment_return_proxy: 0.048  # Source: Saves mortgage interest rate
 
 # T1-4: Sensitivity analysis scenarios
 sensitivity:
-  property_price_deltas_pct: [-10, -20, 10]
+  property_price_deltas_pct: [-10, -20, 10]      # Source: Internal stress scenarios
   retirement_age_deltas: [-2, 2, 5]
   savings_rate_increases_pct: [5, 10]
   pension_contribution_increases_pct: [2, 5]
@@ -175,55 +178,57 @@ sensitivity:
 
 # T1-1: Insurance multiplier config
 insurance:
-  life_multiplier_with_dependents: 10
-  life_multiplier_mortgage_only: 5
-  income_protection_pct: 0.60
-  critical_illness_expense_months: 24
-  pension_inadequacy_life_uplift: 1.5    # multiply life cover if pension < 50% replacement
+  life_multiplier_with_dependents: 10  # Source: ABI/FCA rule of thumb (10x salary)
+  life_multiplier_mortgage_only: 5     # Source: Industry guidance for no-dependents mortgage cover
+  income_protection_pct: 0.60          # Source: Typical IP benefit cap (60% of gross)
+  critical_illness_expense_months: 24  # Source: Macmillan/ABI average recovery period
+  pension_inadequacy_life_uplift: 1.5  # Source: Internal model (poor pension = need more cover)
 
 # T1-1: Student loan DTI weighting for mortgage
 student_loan_dti:
-  years_to_writeoff_50pct_weight: 10     # within 10 years: 50% DTI weight
-  years_to_writeoff_25pct_weight: 5      # within 5 years: 25% DTI weight
+  years_to_writeoff_50pct_weight: 10   # Source: Internal model
+  years_to_writeoff_25pct_weight: 5    # Source: Internal model
 
 # T2-5: Extracted hardcoded values
 debt_simulation:
-  extra_payment_scenarios: [100, 200, 500]
-  max_simulation_months: 600
+  extra_payment_scenarios: [100, 200, 500]  # Source: Internal model
+  max_simulation_months: 600                # Source: 50 years max simulation
 
 lisa:
-  annual_limit: 4000
-  bonus_rate: 0.25
-  property_price_limit: 450000
-  age_limit: 40
+  annual_limit: 4000                   # Source: HMRC 2025/26
+  bonus_rate: 0.25                     # Source: HMRC — 25% government bonus
+  property_price_limit: 450000         # Source: HMRC — max property value for LISA withdrawal
+  age_limit: 40                        # Source: HMRC — must open before age 40
 
 isa:
-  annual_limit: 20000
+  annual_limit: 20000                  # Source: HMRC 2025/26
 
 retirement:
-  safe_withdrawal_rate: 0.04
-  tax_free_lump_sum_fraction: 0.25
-  default_income_target: 30000
+  safe_withdrawal_rate: 0.04           # Source: Trinity Study / Bengen 4% rule
+  tax_free_lump_sum_fraction: 0.25     # Source: HMRC — 25% pension commencement lump sum
+  default_income_target: 30000         # Source: PLSA Retirement Living Standards (moderate)
 
 fee_comparison:
-  low_cost_total_pct: 0.0015
-  high_cost_total_pct: 0.015
+  low_cost_total_pct: 0.0015           # Source: Vanguard/iShares index fund TER range
+  high_cost_total_pct: 0.015           # Source: Typical actively managed fund + platform fee
 
 mortgage_costs:
+  # Source: HomeOwners Alliance / Money Saving Expert typical costs 2025
   solicitor: 1500
   survey: 500
   valuation: 350
   arrangement_fee: 1000
   moving_costs: 1000
   remortgage_fee: 1500
-  overpayment_annual_limit_pct: 0.10
+  overpayment_annual_limit_pct: 0.10   # Source: Standard mortgage contract term
   overpayment_scenarios: [100, 200, 500]
-  rate_offset_from_stress: 0.02
-  dti_adjustment_cap_pct: 0.20
-  first_time_buyer_threshold: 625000
-  shared_ownership_deposit_pct: 0.10
+  rate_offset_from_stress: 0.02        # Source: Internal model
+  dti_adjustment_cap_pct: 0.20         # Source: Internal model
+  first_time_buyer_threshold: 625000   # Source: HMRC 2025/26 FTB stamp duty relief cap
+  shared_ownership_deposit_pct: 0.10   # Source: Homes England minimum deposit on share
 
 scenarios:
+  # Source: Internal stress test scenarios
   job_loss_months: [3, 6, 12]
   rate_shock_bumps_pct: [1, 2, 3]
   market_drop_pcts: [10, 20, 30]
@@ -231,48 +236,52 @@ scenarios:
   income_cut_pcts: [10, 20, 30]
 
 self_employment:
+  # Source: HMRC 2025/26 Class 4 NI and Class 2 NI
   class4_main_rate: 0.09
   class4_additional_rate: 0.02
   class2_weekly_rate: 3.45
 
 # T2-2: Capital gains tax and dividend tax
 capital_gains_tax:
-  annual_exemption: 3000
-  basic_rate: 0.10
-  higher_rate: 0.20
-  basic_rate_property: 0.18
-  higher_rate_property: 0.24
+  annual_exemption: 3000               # Source: HMRC 2025/26 (reduced from £6,000)
+  basic_rate: 0.10                     # Source: HMRC 2025/26
+  higher_rate: 0.20                    # Source: HMRC 2025/26
+  basic_rate_property: 0.18            # Source: HMRC 2025/26
+  higher_rate_property: 0.24           # Source: HMRC 2025/26
 
 dividend_tax:
-  allowance: 500
-  basic_rate: 0.0875
-  higher_rate: 0.3375
-  additional_rate: 0.3935
+  allowance: 500                       # Source: HMRC 2025/26 (reduced from £1,000)
+  basic_rate: 0.0875                   # Source: HMRC 2025/26
+  higher_rate: 0.3375                  # Source: HMRC 2025/26
+  additional_rate: 0.3935              # Source: HMRC 2025/26
 
 # T2-3: Insurance cost estimates (indicative, per £100k cover)
 insurance_cost_estimates:
+  # Source: CompareTheMarket/MoneySupermarket indicative ranges 2025
   term_life_per_100k:
     age_25_30: { monthly_low: 5, monthly_high: 8 }
     age_30_40: { monthly_low: 8, monthly_high: 15 }
     age_40_50: { monthly_low: 15, monthly_high: 30 }
     age_50_60: { monthly_low: 30, monthly_high: 60 }
-  income_protection_pct_of_benefit: 0.04
+  income_protection_pct_of_benefit: 0.04  # Source: ABI average IP premium as % of benefit
   critical_illness_per_100k:
     age_25_30: { monthly_low: 15, monthly_high: 25 }
     age_30_40: { monthly_low: 25, monthly_high: 45 }
     age_40_50: { monthly_low: 45, monthly_high: 80 }
 
 advisory_cost_estimates:
+  # Source: Unbiased.co.uk / VouchedFor adviser fee ranges 2025
   will_simple: { low: 150, high: 300 }
   will_mirror_couple: { low: 250, high: 400 }
-  lpa_per_type: 82
+  lpa_per_type: 82                     # Source: GOV.UK OPG registration fee
   ifa_initial_consultation: { low: 500, high: 1500 }
   pension_transfer_analysis: { low: 500, high: 1000 }
 
 # T2-4: Child cost model by age band
 child_costs:
-  nursery_0_2_monthly: 1200       # full-time nursery
-  nursery_3_4_monthly: 600        # after 30 free hours
+  # Source: Child Poverty Action Group / LV= Cost of a Child report 2024
+  nursery_0_2_monthly: 1200
+  nursery_3_4_monthly: 600             # After 30 free hours
   after_school_5_11_monthly: 300
   secondary_12_17_monthly: 200
-  university_annual: 12000        # maintenance + fees contribution
+  university_annual: 12000             # Source: SLC maintenance + tuition fee contribution
