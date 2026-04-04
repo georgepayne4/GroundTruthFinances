@@ -16,11 +16,11 @@ import copy
 import logging
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 from engine.cashflow import analyse_cashflow
 from engine.investments import analyse_investments
 from engine.mortgage import analyse_mortgage
+
+logger = logging.getLogger(__name__)
 
 
 def run_sensitivity(

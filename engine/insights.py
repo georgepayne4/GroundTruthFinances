@@ -298,7 +298,7 @@ def _debt_insights(debt_analysis: dict) -> list[str]:
             threshold = d.get("repayment_threshold", 0)
             if written_off:
                 total_repaid = woi.get("total_lifetime_repayment", 0)
-                amount = d.get("amount_written_off", 0)
+                d.get("amount_written_off", 0)
                 write_off_age = d.get("write_off_age")
                 break_even = woi.get("break_even_salary")
                 insights.append(
@@ -745,7 +745,7 @@ def _tax_optimisation_insights(profile: dict, assumptions: dict, cashflow: dict)
             "type": "marriage_allowance",
             "title": "Claim Marriage Allowance",
             "detail": (
-                f"Your partner can transfer £1,260 of their allowance to you, saving £252/year in tax."
+                "Your partner can transfer £1,260 of their allowance to you, saving £252/year in tax."
             ),
             "estimated_annual_saving": 252,
             "priority": "low",
@@ -1048,11 +1048,11 @@ def _generate_review_triggers(
         # Debt milestones
         high_debt = debt_analysis.get("summary", {}).get("high_interest_total_balance", 0)
         if high_debt > 0 and q <= 2:
-            targets.append(f"Credit card debt should be cleared by this point")
+            targets.append("Credit card debt should be cleared by this point")
             triggers.append("If credit card debt not cleared, review spending and increase payments")
 
         # Trigger conditions
-        triggers.append(f"If savings rate drops below 15%, investigate immediately")
+        triggers.append("If savings rate drops below 15%, investigate immediately")
         if surplus > 0:
             triggers.append(f"If monthly surplus drops below £{surplus * 0.7:,.0f}, review expenses")
 
@@ -1139,7 +1139,7 @@ def _surplus_deployment_plan(
     if match:
         net_cost = match.get("net_cost_monthly", 0)
         roi = match.get("roi_per_pound", 0)
-        total_benefit = match.get("total_benefit_annual", 0)
+        match.get("total_benefit_annual", 0)
         uses.append({
             "action": f"Max employer pension match (increase to {match['match_cap_pct']:.0f}%)",
             "effective_return_pct": round(roi * 100, 0),

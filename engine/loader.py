@@ -9,13 +9,12 @@ and provides accessor helpers used by every downstream module.
 from __future__ import annotations
 
 import logging
-import os
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-from engine.exceptions import ProfileError, AssumptionError
+from engine.exceptions import AssumptionError, ProfileError
 from engine.schemas import validate_assumptions
 
 logger = logging.getLogger(__name__)
@@ -31,7 +30,7 @@ def load_yaml(path: str | Path) -> dict[str, Any]:
     if not path.exists():
         raise FileNotFoundError(f"YAML file not found: {path}")
     logger.debug("Loading YAML: %s", path)
-    with open(path, "r", encoding="utf-8") as fh:
+    with open(path, encoding="utf-8") as fh:
         data = yaml.safe_load(fh)
     if not isinstance(data, dict):
         raise ProfileError(f"Expected a YAML mapping at top level, got {type(data).__name__}")

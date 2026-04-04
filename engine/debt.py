@@ -10,7 +10,6 @@ T1-5: Student loan write-off intelligence with break-even salary.
 from __future__ import annotations
 
 import logging
-import math
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -87,7 +86,7 @@ def analyse_debt(profile: dict, assumptions: dict) -> dict[str, Any]:
     # 4. Classify urgency
     # ------------------------------------------------------------------
     high_interest_debts = [a for a in analyses if a["risk_tier"] == "high"]
-    moderate_debts = [a for a in analyses if a["risk_tier"] == "moderate"]
+    [a for a in analyses if a["risk_tier"] == "moderate"]
 
     # ------------------------------------------------------------------
     # 5. Extra payment simulation (excludes student loans)
@@ -214,7 +213,6 @@ def _student_loan_write_off_intelligence(
     )
 
     overpay_recommendation = "do_not_overpay" if will_be_written_off else "consider_overpaying"
-    years_to_write_off = write_off_years  # from start of plan
 
     result = {
         "total_lifetime_repayment": round(total_repaid, 2),
@@ -261,7 +259,7 @@ def _find_break_even_salary(
         mid = (lo + hi) / 2
         annual_repayment = max(0, mid - threshold) * repayment_rate
         monthly = annual_repayment / 12
-        months, _, _, written_off = _student_loan_projection(
+        _months, _, _, written_off = _student_loan_projection(
             balance, rate, monthly, write_off_years,
         )
         if written_off > 0:

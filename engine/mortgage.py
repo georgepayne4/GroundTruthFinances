@@ -375,7 +375,7 @@ def _compare_products(
 
 def _overpayment_analysis(
     principal: float, annual_rate: float, term_years: int,
-    mort_costs: dict = None,
+    mort_costs: dict | None = None,
 ) -> list[dict]:
     """Model impact of monthly overpayments."""
     if mort_costs is None:
@@ -479,7 +479,7 @@ def _shared_ownership_analysis(
     """Analyse Shared Ownership as alternative when full purchase isn't affordable."""
     rent_pct = so_cfg.get("rent_on_unowned_pct", 0.0275)
     service_charge = so_cfg.get("service_charge_monthly", 150)
-    min_share = so_cfg.get("min_share_pct", 0.25)
+    so_cfg.get("min_share_pct", 0.25)
 
     # Find affordable share
     shares = []
@@ -627,7 +627,7 @@ def _analyse_ltv_bands(
 # Stamp Duty Land Tax (SDLT)
 # ---------------------------------------------------------------------------
 
-def _calculate_stamp_duty(property_value: float, first_time_buyer: bool, assumptions: dict, mort_costs: dict = None) -> dict:
+def _calculate_stamp_duty(property_value: float, first_time_buyer: bool, assumptions: dict, mort_costs: dict | None = None) -> dict:
     """Calculate UK Stamp Duty Land Tax."""
     if mort_costs is None:
         mort_costs = {}
@@ -683,7 +683,7 @@ def _calculate_stamp_duty(property_value: float, first_time_buyer: bool, assumpt
 
 
 def _estimate_acquisition_costs(
-    property_value: float, mortgage_amount: float, sdlt: dict, mort_costs: dict = None,
+    property_value: float, mortgage_amount: float, sdlt: dict, mort_costs: dict | None = None,
 ) -> dict:
     """Itemised estimate of total acquisition costs."""
     if mort_costs is None:

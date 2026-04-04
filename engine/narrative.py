@@ -49,7 +49,7 @@ def _header(report: dict) -> str:
     scoring = report.get("scoring", {})
 
     lines = [
-        f"# GroundTruth Financial Health Report",
+        "# GroundTruth Financial Health Report",
         f"**Prepared for:** {name} (age {age})",
         f"**Date:** {date}",
         f"**Overall Score:** {scoring.get('overall_score', 0):.0f}/100 (Grade: {scoring.get('grade', 'N/A')})",
@@ -323,7 +323,7 @@ def _decision_points(report: dict) -> str:
 
     # Sensitivity triggers
     sensitivity = report.get("sensitivity_analysis", {})
-    for cat, scenarios in sensitivity.get("scenarios", {}).items():
+    for _cat, scenarios in sensitivity.get("scenarios", {}).items():
         for s in scenarios:
             if s.get("delta_score", 0) < -10:
                 points.append(f"**If {s['label']}:** Score drops significantly. Monitor this risk.")

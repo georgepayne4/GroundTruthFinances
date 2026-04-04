@@ -19,13 +19,12 @@ Comprehensive investment analysis including:
 from __future__ import annotations
 
 import logging
-import math
 from typing import Any
 
 from engine.tax import (
-    calculate_tax_on_pension_withdrawal,
     calculate_capital_gains_tax,
     calculate_dividend_tax,
+    calculate_tax_on_pension_withdrawal,
 )
 
 logger = logging.getLogger(__name__)
@@ -174,7 +173,7 @@ def analyse_investments(profile: dict, assumptions: dict, cashflow: dict) -> dic
         blended_fee = ((isa + lisa) * total_isa_fee + pension * total_pension_fee) / total_invested
 
     net_return = expected_return - blended_fee
-    net_real_return = net_return - inflation
+    net_return - inflation
 
     # ------------------------------------------------------------------
     # 4. Portfolio growth projection
@@ -598,7 +597,7 @@ def _retirement_withdrawal_strategy(
     target_income: float = 30000,
 ) -> dict:
     """Model optimal vs naive withdrawal ordering in retirement."""
-    pa = tax_cfg.get("personal_allowance", 12570)
+    tax_cfg.get("personal_allowance", 12570)
     basic_thresh = tax_cfg.get("basic_threshold", 50270)
 
     # Naive: all from pension
@@ -606,7 +605,7 @@ def _retirement_withdrawal_strategy(
 
     # Optimised: use ISA to fill gap, pension to fill tax bands
     pension_drawdown_to_fill_basic = max(0, basic_thresh - state_pension) * (4 / 3)  # gross up for 25% tax-free
-    isa_topup = max(0, target_income - pension_drawdown_to_fill_basic - state_pension)
+    max(0, target_income - pension_drawdown_to_fill_basic - state_pension)
     optimised_pension_draw = min(pension_drawdown_to_fill_basic, target_income - state_pension)
     optimised_tax = calculate_tax_on_pension_withdrawal(optimised_pension_draw, state_pension, tax_cfg)
 
@@ -744,7 +743,7 @@ def _annuity_comparison(
 # ISA contribution tracking (IA-11)
 # ---------------------------------------------------------------------------
 
-def _isa_contribution_tracking(sav: dict, isa_cfg: dict = None, lisa_cfg: dict = None) -> dict:
+def _isa_contribution_tracking(sav: dict, isa_cfg: dict | None = None, lisa_cfg: dict | None = None) -> dict:
     """Track ISA and LISA contribution allowances."""
     if isa_cfg is None:
         isa_cfg = {}

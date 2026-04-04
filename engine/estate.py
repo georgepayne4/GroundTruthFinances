@@ -44,7 +44,7 @@ def analyse_estate(
 
     # Project asset values at life expectancy
     pension = investment_analysis.get("pension_analysis", {})
-    pension_at_retirement_nominal = pension.get("projected_at_retirement_nominal", 0)
+    pension.get("projected_at_retirement_nominal", 0)
 
     # Pension death benefits (pension pots pass outside estate if under 75 at death,
     # but included for conservative estimate)
@@ -58,7 +58,7 @@ def analyse_estate(
     projected_liquid = total_liquid * ((1 + inflation) ** years_to_death)
 
     # Property value projection
-    owns_property = profile.get("_owns_property", False)
+    profile.get("_owns_property", False)
     target_property = mortgage_analysis.get("target_property_value", 0) if mortgage_analysis.get("applicable") else 0
     property_value_at_death = target_property * ((1 + housing_growth) ** years_to_death) if target_property > 0 else 0
 
@@ -90,9 +90,8 @@ def analyse_estate(
 
     # T2-3: Advisory cost estimates
     advisory_costs = assumptions.get("advisory_cost_estimates", {})
-    surplus_monthly = 0
     if cashflow:
-        surplus_monthly = cashflow.get("surplus", {}).get("monthly", 0)
+        cashflow.get("surplus", {}).get("monthly", 0)
 
     planning_actions = []
     if not has_will:

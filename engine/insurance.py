@@ -389,7 +389,7 @@ def _survivor_security(
     # Estimate net income for each partner individually (rough: 70% of gross)
     primary_net_monthly = primary_gross * 0.70 / 12
     partner_net_monthly = partner_gross * 0.70 / 12
-    household_net = cashflow.get("net_income", {}).get("monthly", 0)
+    cashflow.get("net_income", {}).get("monthly", 0)
 
     mortgage_payment = 0
     if mortgage_analysis.get("applicable"):

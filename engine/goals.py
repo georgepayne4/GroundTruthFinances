@@ -101,7 +101,7 @@ def analyse_goals(
     # ------------------------------------------------------------------
     # 3. Re-evaluate feasibility with allocated amounts
     # ------------------------------------------------------------------
-    for a, alloc in zip(analyses, allocation):
+    for a, alloc in zip(analyses, allocation, strict=False):
         a["allocated_monthly"] = round(alloc, 2)
         a["feasibility_with_allocation"] = _assess_feasibility(
             a["remaining_gap"], alloc, a["deadline_months"]

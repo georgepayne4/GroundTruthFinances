@@ -36,8 +36,10 @@ select = [
     "RUF",   # ruff-specific
 ]
 ignore = [
-    "E501",  # line length handled by formatter
+    "E501",   # line length handled by formatter
     "SIM108", # ternary operator — readability preference
+    "RUF001", # ambiguous unicode in strings (intentional: ×, £)
+    "RUF002", # ambiguous unicode in docstrings (intentional: –, —)
 ]
 
 [tool.ruff.lint.isort]

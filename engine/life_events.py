@@ -36,7 +36,7 @@ def simulate_life_events(
     personal = profile.get("personal", {})
     sav = profile.get("savings", {})
     inc = profile.get("income", {})
-    debts = profile.get("debts", [])
+    profile.get("debts", [])
 
     age = personal.get("age", 30)
     retirement_age = personal.get("retirement_age",
@@ -166,14 +166,13 @@ def simulate_life_events(
                 children.append({"age": 0, "label": desc, "birth_year": year})
 
             # MA-4: Track property purchase
-            if "home" in desc.lower() or "property" in desc.lower() or "purchase" in desc.lower():
-                if mort:
-                    property_value = mort.get("target_property_value", 0)
-                    deposit_pct = mort.get("preferred_deposit_pct", 0.15)
-                    mortgage_balance = property_value * (1 - deposit_pct)
-                    mortgage_rate = assumptions.get("mortgage", {}).get("stress_test_rate", 0.07) - 0.02
-                    mortgage_term = mort.get("preferred_term_years", 25)
-                    owns_property = True
+            if ("home" in desc.lower() or "property" in desc.lower() or "purchase" in desc.lower()) and mort:
+                property_value = mort.get("target_property_value", 0)
+                deposit_pct = mort.get("preferred_deposit_pct", 0.15)
+                mortgage_balance = property_value * (1 - deposit_pct)
+                mortgage_rate = assumptions.get("mortgage", {}).get("stress_test_rate", 0.07) - 0.02
+                mortgage_term = mort.get("preferred_term_years", 25)
+                owns_property = True
 
         # T2-4: Age children and adjust costs by age band
         child_cost_adjustment = 0.0
@@ -250,7 +249,6 @@ def simulate_life_events(
             })
 
         # Debt-free milestone (excluding student loans)
-        non_sl_debt = state.total_debt  # simplified — tracks total
         if prev_debt > 1000 and state.total_debt < 100 and year > 0:
             milestones.append({
                 "year": year,

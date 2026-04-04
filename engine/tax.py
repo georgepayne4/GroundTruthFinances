@@ -142,7 +142,7 @@ def calculate_capital_gains_tax(
         }
 
     basic_thresh = tax_cfg.get("basic_threshold", 50270)
-    pa = tax_cfg.get("personal_allowance", 12570)
+    tax_cfg.get("personal_allowance", 12570)
 
     if is_property:
         basic_rate = cgt_cfg.get("basic_rate_property", 0.18)
@@ -204,7 +204,7 @@ def calculate_dividend_tax(
     additional_rate = div_cfg.get("additional_rate", 0.3935)
 
     # Total income including dividends determines band
-    total_income = gross_income + dividends
+    gross_income + dividends
 
     tax = 0.0
     remaining = taxable_dividends
