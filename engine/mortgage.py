@@ -18,6 +18,8 @@ import logging
 import math
 from typing import Any
 
+from engine.utils import monthly_repayment as _monthly_repayment
+
 logger = logging.getLogger(__name__)
 
 
@@ -747,15 +749,3 @@ def _weighted_debt_payments(debt_analysis: dict, assumptions: dict) -> float:
     return total
 
 
-def _monthly_repayment(principal: float, annual_rate: float, term_years: int) -> float:
-    """Standard amortising mortgage repayment formula."""
-    if principal <= 0 or term_years <= 0:
-        return 0.0
-    if annual_rate <= 0:
-        return principal / (term_years * 12)
-
-    r = annual_rate / 12
-    n = term_years * 12
-    compound = (1 + r) ** n
-    payment = principal * (r * compound) / (compound - 1)
-    return round(payment, 2)

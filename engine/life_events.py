@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from engine.mortgage import _monthly_repayment
+from engine.utils import monthly_repayment as _monthly_repayment
 
 logger = logging.getLogger(__name__)
 

@@ -16,6 +16,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from engine.utils import monthly_repayment as _amortising_payment
+
 logger = logging.getLogger(__name__)
 
 
@@ -94,7 +96,7 @@ def _rate_shock_scenario(
     Scenarios: +1%, +2%, +3% above current estimated rate.
     """
     if not mortgage_analysis.get("applicable"):
-        return {"applicable": False}
+        return {"applicable": False, "reason": "Mortgage not applicable."}
 
     repayment = mortgage_analysis.get("repayment", {})
     mortgage_amount = repayment.get("mortgage_amount", 0)
@@ -231,17 +233,3 @@ def _income_reduction_scenario(profile: dict, cashflow: dict, scn_cfg: dict = No
     }
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _amortising_payment(principal: float, annual_rate: float, term_years: int) -> float:
-    """Standard amortising mortgage payment formula."""
-    if principal <= 0 or term_years <= 0:
-        return 0.0
-    if annual_rate <= 0:
-        return principal / (term_years * 12)
-    r = annual_rate / 12
-    n = term_years * 12
-    compound = (1 + r) ** n
-    return principal * (r * compound) / (compound - 1)
