@@ -223,6 +223,15 @@ retirement:
   tax_free_lump_sum_fraction: 0.25     # Source: HMRC — 25% pension commencement lump sum
   default_income_target: 30000         # Source: PLSA Retirement Living Standards (moderate)
 
+pension_annual_allowance:
+  standard: 60000                      # Source: HMRC 2025/26
+  taper_threshold: 260000              # Source: HMRC — adjusted income threshold for taper
+  taper_reduction_rate: 0.50           # Source: HMRC — £1 reduction per £2 over threshold
+  minimum_allowance: 10000             # Source: HMRC — floor after taper
+  tax_charge_rate_basic: 0.20          # Source: HMRC — excess taxed as income
+  tax_charge_rate_higher: 0.40         # Source: HMRC
+  tax_charge_rate_additional: 0.45     # Source: HMRC
+
 fee_comparison:
   low_cost_total_pct: 0.0015           # Source: Vanguard/iShares index fund TER range
   high_cost_total_pct: 0.015           # Source: Typical actively managed fund + platform fee

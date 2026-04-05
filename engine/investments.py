@@ -466,6 +466,15 @@ def analyse_investments(profile: dict, assumptions: dict, cashflow: dict) -> dic
     if rebalancing:
         result["rebalancing"] = rebalancing
 
+    # v5.1-10: Pension Annual Allowance check
+    aa_cfg = assumptions.get("pension_annual_allowance", {})
+    if aa_cfg:
+        aa_check = _check_annual_allowance(
+            primary_gross, annual_pension_contribution, aa_cfg,
+        )
+        if aa_check:
+            result["pension_annual_allowance"] = aa_check
+
     return result
 
 
@@ -960,3 +969,65 @@ def _project_growth(
             "investment_growth": round(growth, 2),
         })
     return results
+
+
+# ---------------------------------------------------------------------------
+# v5.1-10: Pension Annual Allowance Check
+# ---------------------------------------------------------------------------
+
+def _check_annual_allowance(
+    gross_income: float, total_contributions: float, aa_cfg: dict,
+) -> dict | None:
+    """Check if pension contributions exceed the annual allowance.
+
+    For high earners (adjusted income > taper_threshold), the allowance
+    tapers down by £1 for every £2 over the threshold, to a minimum.
+    """
+    standard_aa = aa_cfg.get("standard", 60000)
+    taper_threshold = aa_cfg.get("taper_threshold", 260000)
+    taper_rate = aa_cfg.get("taper_reduction_rate", 0.50)
+    minimum_aa = aa_cfg.get("minimum_allowance", 10000)
+
+    # Adjusted income = gross + employer contributions (simplified)
+    adjusted_income = gross_income + total_contributions
+
+    # Calculate effective annual allowance
+    if adjusted_income > taper_threshold:
+        reduction = (adjusted_income - taper_threshold) * taper_rate
+        effective_aa = max(minimum_aa, standard_aa - reduction)
+    else:
+        effective_aa = standard_aa
+
+    # Also capped at 100% of earnings
+    effective_aa = min(effective_aa, gross_income)
+
+    excess = total_contributions - effective_aa
+    breached = excess > 0
+
+    result = {
+        "standard_allowance": standard_aa,
+        "effective_allowance": round(effective_aa, 2),
+        "total_contributions": round(total_contributions, 2),
+        "excess": round(max(0, excess), 2),
+        "breached": breached,
+        "tapered": adjusted_income > taper_threshold,
+    }
+
+    if breached:
+        # Estimate tax charge — excess taxed at marginal rate
+        basic_thresh = 50270
+        if gross_income > 125140:
+            charge_rate = aa_cfg.get("tax_charge_rate_additional", 0.45)
+        elif gross_income > basic_thresh:
+            charge_rate = aa_cfg.get("tax_charge_rate_higher", 0.40)
+        else:
+            charge_rate = aa_cfg.get("tax_charge_rate_basic", 0.20)
+        result["estimated_tax_charge"] = round(excess * charge_rate, 2)
+        result["charge_rate_pct"] = round(charge_rate * 100, 1)
+        result["warning"] = (
+            f"Total pension contributions (£{total_contributions:,.0f}) exceed your annual allowance "
+            f"(£{effective_aa:,.0f}) by £{excess:,.0f}. This triggers a tax charge of "
+            f"~£{excess * charge_rate:,.0f} at your marginal rate."
+        )
+
+    return result

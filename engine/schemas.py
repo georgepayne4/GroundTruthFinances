@@ -251,6 +251,16 @@ class IsaConfig(BaseModel):
     annual_limit: int = Field(gt=0)
 
 
+class PensionAnnualAllowanceConfig(BaseModel):
+    standard: int = Field(gt=0)
+    taper_threshold: int = Field(gt=0)
+    taper_reduction_rate: float = Field(ge=0.0, le=1.0)
+    minimum_allowance: int = Field(gt=0)
+    tax_charge_rate_basic: float = Field(ge=0.0, le=1.0)
+    tax_charge_rate_higher: float = Field(ge=0.0, le=1.0)
+    tax_charge_rate_additional: float = Field(ge=0.0, le=1.0)
+
+
 class RetirementConfig(BaseModel):
     safe_withdrawal_rate: float = Field(ge=0.01, le=0.10)
     tax_free_lump_sum_fraction: float = Field(ge=0.0, le=1.0)
@@ -373,6 +383,7 @@ class AssumptionsSchema(BaseModel):
     lisa: LisaConfig
     isa: IsaConfig
     retirement: RetirementConfig
+    pension_annual_allowance: PensionAnnualAllowanceConfig
     fee_comparison: FeeComparisonConfig
     mortgage_costs: MortgageCostsConfig
     scenarios: ScenariosConfig
