@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from engine.tax import calculate_income_tax, calculate_national_insurance
+from engine.tax import calculate_income_tax, calculate_marriage_allowance, calculate_national_insurance
 
 logger = logging.getLogger(__name__)
 
@@ -244,6 +244,11 @@ def analyse_cashflow(profile: dict, assumptions: dict) -> dict[str, Any]:
                 partner_pension_personal + partner_pension_employer, 2
             ),
         }
+
+        # v5.1-07: Marriage Allowance check
+        ma = calculate_marriage_allowance(primary_gross, partner_gross, tax_cfg)
+        if ma.get("eligible"):
+            result["marriage_allowance"] = ma
 
     return result
 

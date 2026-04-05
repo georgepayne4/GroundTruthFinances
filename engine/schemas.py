@@ -42,6 +42,7 @@ class TaxConfig(BaseModel):
     higher_threshold: int = Field(gt=0)
     additional_rate: float = Field(ge=0.0, le=1.0)
     national_insurance_rate: float = Field(ge=0.0, le=1.0)
+    marriage_allowance_transfer: int = Field(default=1260, ge=0)
 
 
 class StampDutyBand(BaseModel):

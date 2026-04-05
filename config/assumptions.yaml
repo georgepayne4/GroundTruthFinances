@@ -34,6 +34,7 @@ tax:
   higher_threshold: 125140             # Source: HMRC 2025/26
   additional_rate: 0.45                # Source: HMRC 2025/26
   national_insurance_rate: 0.08        # Source: HMRC 2025/26 Class 1 employee rate
+  marriage_allowance_transfer: 1260    # Source: HMRC 2025/26 (10% of PA transferable)
 
 stamp_duty:
   first_time_buyer:                    # Source: HMRC 2025/26 (temporary relief extended)

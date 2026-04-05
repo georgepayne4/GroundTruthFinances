@@ -53,6 +53,41 @@ def calculate_income_tax(gross_annual: float, tax_cfg: dict) -> float:
     return round(tax, 2)
 
 
+def calculate_marriage_allowance(
+    earner_gross: float, partner_gross: float, tax_cfg: dict,
+) -> dict:
+    """Check eligibility and calculate Marriage Allowance tax saving.
+
+    One partner (the transferor) must earn below the personal allowance.
+    The other (the recipient) must be a basic-rate taxpayer (below basic_threshold).
+    The transferor gives £1,260 of their PA to the recipient, saving £252/year.
+    """
+    pa = tax_cfg.get("personal_allowance", 12570)
+    basic_thresh = tax_cfg.get("basic_threshold", 50270)
+    transfer_amount = tax_cfg.get("marriage_allowance_transfer", 1260)
+    basic_rate = tax_cfg.get("basic_rate", 0.20)
+
+    # Determine who is the low earner and who is the higher earner
+    if earner_gross <= pa and pa < partner_gross <= basic_thresh:
+        transferor_gross = earner_gross
+        recipient_gross = partner_gross
+    elif partner_gross <= pa and pa < earner_gross <= basic_thresh:
+        transferor_gross = partner_gross
+        recipient_gross = earner_gross
+    else:
+        return {"eligible": False, "reason": "Neither partner qualifies (one must earn below PA, other must be basic-rate)."}
+
+    tax_saving = transfer_amount * basic_rate
+
+    return {
+        "eligible": True,
+        "transferor_income": round(transferor_gross, 2),
+        "recipient_income": round(recipient_gross, 2),
+        "transfer_amount": transfer_amount,
+        "annual_tax_saving": round(tax_saving, 2),
+    }
+
+
 def calculate_national_insurance(
     gross_annual: float, tax_cfg: dict, self_employed: bool = False,
 ) -> float:

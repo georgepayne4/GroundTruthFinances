@@ -7,6 +7,7 @@ from hypothesis import given, settings, HealthCheck, strategies as st
 
 from engine.tax import (
     calculate_income_tax,
+    calculate_marriage_allowance,
     calculate_national_insurance,
     calculate_tax_on_pension_withdrawal,
     calculate_capital_gains_tax,
@@ -204,3 +205,37 @@ class TestDividendTax:
         result = calculate_dividend_tax(5000, 30000, div_cfg, tax_cfg)
         assert result["taxable_dividends"] == 4500
         assert result["tax"] > 0
+
+
+# -----------------------------------------------------------------------
+# Marriage Allowance
+# -----------------------------------------------------------------------
+
+class TestMarriageAllowance:
+    def test_eligible_couple(self, tax_cfg):
+        # One earns £10k (below PA), other earns £30k (basic rate)
+        result = calculate_marriage_allowance(10000, 30000, tax_cfg)
+        assert result["eligible"] is True
+        assert result["annual_tax_saving"] == 252  # 1260 * 0.20
+        assert result["transfer_amount"] == 1260
+
+    def test_eligible_reversed(self, tax_cfg):
+        # Works when roles are swapped
+        result = calculate_marriage_allowance(30000, 10000, tax_cfg)
+        assert result["eligible"] is True
+        assert result["annual_tax_saving"] == 252
+
+    def test_ineligible_both_earning(self, tax_cfg):
+        # Both above PA — not eligible
+        result = calculate_marriage_allowance(30000, 40000, tax_cfg)
+        assert result["eligible"] is False
+
+    def test_ineligible_higher_rate(self, tax_cfg):
+        # Recipient is higher rate — not eligible
+        result = calculate_marriage_allowance(10000, 60000, tax_cfg)
+        assert result["eligible"] is False
+
+    def test_ineligible_both_below_pa(self, tax_cfg):
+        # Both below PA — neither qualifies as recipient
+        result = calculate_marriage_allowance(5000, 8000, tax_cfg)
+        assert result["eligible"] is False
