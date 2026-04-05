@@ -80,12 +80,15 @@ def analyse_cashflow(profile: dict, assumptions: dict) -> dict[str, Any]:
     # ------------------------------------------------------------------
     # 3. Net (take-home) income
     # ------------------------------------------------------------------
-    basic_rate = tax_cfg.get("basic_rate", 0.20)
     side_annual = inc.get("side_income_monthly", 0) * 12
     rental_annual = inc.get("rental_income_monthly", 0) * 12
     investment_annual = inc.get("investment_income_annual", 0)
     other_gross = side_annual + rental_annual + investment_annual
-    other_tax = other_gross * basic_rate
+
+    # Marginal tax on other income: tax on (primary + other) minus tax on primary alone
+    # This correctly applies progressive bands — side income at £80k primary is taxed at 40%
+    combined_tax = calculate_income_tax(taxable_primary + other_gross, tax_cfg)
+    other_tax = combined_tax - primary_tax
 
     total_gross_annual = primary_gross + partner_gross + other_gross
     total_deductions = total_tax + total_ni + other_tax + pension_personal_annual + partner_pension_personal

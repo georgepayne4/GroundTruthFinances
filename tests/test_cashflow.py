@@ -66,6 +66,55 @@ class TestCashflowHighEarner:
             assert expected["net"] == expected["gross"] - expected["tax"]
 
 
+class TestSideIncomeTax:
+    def test_side_income_taxed_at_marginal_rate(self, assumptions):
+        """Side income for a higher-rate taxpayer should be taxed above 20%."""
+        from engine.loader import _normalise_profile
+        profile = _normalise_profile({
+            "personal": {"age": 35, "employment_type": "employed"},
+            "income": {
+                "primary_gross_annual": 80000,
+                "side_income_monthly": 500,  # £6,000/year
+            },
+            "expenses": {"housing": {"rent_monthly": 1200}},
+            "savings": {
+                "pension_personal_contribution_pct": 0.0,
+                "pension_employer_contribution_pct": 0.0,
+            },
+            "debts": [],
+            "goals": [],
+        })
+        result = analyse_cashflow(profile, assumptions)
+        other_tax = result["deductions"]["other_income_tax_annual"]
+        # £80k primary is well into higher rate band (40%)
+        # So £6k side income should be taxed at ~40%, not flat 20%
+        # At flat 20%: other_tax = 1200. At 40%: other_tax = 2400
+        assert other_tax > 1200, f"Side income tax {other_tax} should be above flat 20% (1200)"
+
+    def test_side_income_basic_rate_for_low_earner(self, assumptions):
+        """Side income for a basic-rate taxpayer should be taxed at 20%."""
+        from engine.loader import _normalise_profile
+        profile = _normalise_profile({
+            "personal": {"age": 25, "employment_type": "employed"},
+            "income": {
+                "primary_gross_annual": 30000,
+                "side_income_monthly": 200,  # £2,400/year
+            },
+            "expenses": {"housing": {"rent_monthly": 800}},
+            "savings": {
+                "pension_personal_contribution_pct": 0.0,
+                "pension_employer_contribution_pct": 0.0,
+            },
+            "debts": [],
+            "goals": [],
+        })
+        result = analyse_cashflow(profile, assumptions)
+        other_tax = result["deductions"]["other_income_tax_annual"]
+        # £30k primary is entirely within basic band. Side income also basic rate.
+        # £2400 * 0.20 = £480
+        assert abs(other_tax - 480) < 1, f"Expected ~480, got {other_tax}"
+
+
 class TestCashflowPartner:
     def test_partner_section(self, sample_profile, assumptions):
         # Add partner to sample profile
