@@ -36,6 +36,20 @@ tax:
   national_insurance_rate: 0.08        # Source: HMRC 2025/26 Class 1 employee rate
   marriage_allowance_transfer: 1260    # Source: HMRC 2025/26 (10% of PA transferable)
 
+scottish_tax:
+  # Source: Revenue Scotland 2025/26
+  starter_rate: 0.19
+  starter_threshold: 14876             # PA + starter band
+  basic_rate: 0.20
+  basic_threshold: 26561
+  intermediate_rate: 0.21
+  intermediate_threshold: 43662
+  higher_rate: 0.42
+  higher_threshold: 75000
+  advanced_rate: 0.45
+  advanced_threshold: 125140
+  top_rate: 0.48
+
 stamp_duty:
   first_time_buyer:                    # Source: HMRC 2025/26 (temporary relief extended)
     - { threshold: 425000, rate: 0.00 }

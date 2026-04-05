@@ -14,17 +14,19 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def calculate_income_tax(gross_annual: float, tax_cfg: dict) -> float:
-    """Calculate income tax using progressive bands."""
+def calculate_income_tax(
+    gross_annual: float, tax_cfg: dict, *, scottish_cfg: dict | None = None,
+) -> float:
+    """Calculate income tax using progressive bands.
+
+    If scottish_cfg is provided, uses Scottish income tax rates instead of
+    rUK rates. Personal allowance and PA taper are set by Westminster
+    regardless of region.
+    """
     if gross_annual <= 0:
         return 0.0
 
     pa = tax_cfg.get("personal_allowance", 12570)
-    basic_thresh = tax_cfg.get("basic_threshold", 50270)
-    higher_thresh = tax_cfg.get("higher_threshold", 125140)
-    basic_rate = tax_cfg.get("basic_rate", 0.20)
-    higher_rate = tax_cfg.get("higher_rate", 0.40)
-    additional_rate = tax_cfg.get("additional_rate", 0.45)
 
     # Personal allowance taper: reduced by 1 for every 2 over 100k
     effective_pa = pa
@@ -33,6 +35,15 @@ def calculate_income_tax(gross_annual: float, tax_cfg: dict) -> float:
         effective_pa = max(0, pa - reduction)
 
     taxable = max(0, gross_annual - effective_pa)
+
+    if scottish_cfg:
+        return round(_scottish_income_tax(taxable, effective_pa, scottish_cfg), 2)
+
+    basic_thresh = tax_cfg.get("basic_threshold", 50270)
+    higher_thresh = tax_cfg.get("higher_threshold", 125140)
+    basic_rate = tax_cfg.get("basic_rate", 0.20)
+    higher_rate = tax_cfg.get("higher_rate", 0.40)
+    additional_rate = tax_cfg.get("additional_rate", 0.45)
 
     tax = 0.0
 
@@ -51,6 +62,33 @@ def calculate_income_tax(gross_annual: float, tax_cfg: dict) -> float:
     tax += additional_taxable * additional_rate
 
     return round(tax, 2)
+
+
+def _scottish_income_tax(taxable: float, effective_pa: float, scot: dict) -> float:
+    """Apply Scottish income tax bands to taxable income."""
+    bands = [
+        (scot.get("starter_threshold", 14876) - effective_pa, scot.get("starter_rate", 0.19)),
+        (scot.get("basic_threshold", 26561) - scot.get("starter_threshold", 14876), scot.get("basic_rate", 0.20)),
+        (scot.get("intermediate_threshold", 43662) - scot.get("basic_threshold", 26561), scot.get("intermediate_rate", 0.21)),
+        (scot.get("higher_threshold", 75000) - scot.get("intermediate_threshold", 43662), scot.get("higher_rate", 0.42)),
+        (scot.get("advanced_threshold", 125140) - scot.get("higher_threshold", 75000), scot.get("advanced_rate", 0.45)),
+    ]
+    top_rate = scot.get("top_rate", 0.48)
+
+    tax = 0.0
+    remaining = taxable
+    for band_width, rate in bands:
+        band_width = max(0, band_width)
+        amount = min(remaining, band_width)
+        tax += amount * rate
+        remaining -= amount
+        if remaining <= 0:
+            break
+
+    if remaining > 0:
+        tax += remaining * top_rate
+
+    return tax
 
 
 def calculate_marriage_allowance(

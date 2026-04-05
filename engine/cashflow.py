@@ -48,13 +48,17 @@ def analyse_cashflow(profile: dict, assumptions: dict) -> dict[str, Any]:
     # T2-1: Partner section takes precedence over legacy income field
     partner_gross = partner.get("gross_salary", inc.get("partner_gross_annual", 0))
 
+    # v5.1-08: Scottish tax region support
+    tax_region = personal.get("tax_region", "england_ni")
+    scottish_cfg = assumptions.get("scottish_tax") if tax_region == "scotland" else None
+
     # For self-employed, deduct business expenses before tax
     business_expenses = inc.get("business_expenses_annual", 0)
     taxable_primary = max(0, primary_gross - business_expenses) if is_self_employed else primary_gross
 
-    primary_tax = calculate_income_tax(taxable_primary, tax_cfg)
+    primary_tax = calculate_income_tax(taxable_primary, tax_cfg, scottish_cfg=scottish_cfg)
     primary_ni = calculate_national_insurance(taxable_primary, tax_cfg, self_employed=is_self_employed)
-    partner_tax = calculate_income_tax(partner_gross, tax_cfg)
+    partner_tax = calculate_income_tax(partner_gross, tax_cfg, scottish_cfg=scottish_cfg)
     partner_ni = calculate_national_insurance(partner_gross, tax_cfg)
 
     total_tax = primary_tax + partner_tax
@@ -87,7 +91,7 @@ def analyse_cashflow(profile: dict, assumptions: dict) -> dict[str, Any]:
 
     # Marginal tax on other income: tax on (primary + other) minus tax on primary alone
     # This correctly applies progressive bands — side income at £80k primary is taxed at 40%
-    combined_tax = calculate_income_tax(taxable_primary + other_gross, tax_cfg)
+    combined_tax = calculate_income_tax(taxable_primary + other_gross, tax_cfg, scottish_cfg=scottish_cfg)
     other_tax = combined_tax - primary_tax
 
     total_gross_annual = primary_gross + partner_gross + other_gross
@@ -135,10 +139,10 @@ def analyse_cashflow(profile: dict, assumptions: dict) -> dict[str, Any]:
     bonus_scenarios = None
     if bonus_expected > 0 or bonus_low > 0 or bonus_high > 0:
         bonus_scenarios = {}
-        base_tax = calculate_income_tax(taxable_primary, tax_cfg)
+        base_tax = calculate_income_tax(taxable_primary, tax_cfg, scottish_cfg=scottish_cfg)
         for label, bonus in [("low", bonus_low), ("expected", bonus_expected), ("high", bonus_high)]:
             if bonus > 0:
-                bonus_tax = calculate_income_tax(taxable_primary + bonus, tax_cfg) - base_tax
+                bonus_tax = calculate_income_tax(taxable_primary + bonus, tax_cfg, scottish_cfg=scottish_cfg) - base_tax
                 bonus_net = bonus - bonus_tax
                 bonus_scenarios[label] = {
                     "gross": round(bonus, 2),

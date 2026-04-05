@@ -45,6 +45,20 @@ class TaxConfig(BaseModel):
     marriage_allowance_transfer: int = Field(default=1260, ge=0)
 
 
+class ScottishTaxConfig(BaseModel):
+    starter_rate: float = Field(ge=0.0, le=1.0)
+    starter_threshold: int = Field(gt=0)
+    basic_rate: float = Field(ge=0.0, le=1.0)
+    basic_threshold: int = Field(gt=0)
+    intermediate_rate: float = Field(ge=0.0, le=1.0)
+    intermediate_threshold: int = Field(gt=0)
+    higher_rate: float = Field(ge=0.0, le=1.0)
+    higher_threshold: int = Field(gt=0)
+    advanced_rate: float = Field(ge=0.0, le=1.0)
+    advanced_threshold: int = Field(gt=0)
+    top_rate: float = Field(ge=0.0, le=1.0)
+
+
 class StampDutyBand(BaseModel):
     threshold: int = Field(gt=0)
     rate: float = Field(ge=0.0, le=1.0)
@@ -333,6 +347,7 @@ class AssumptionsSchema(BaseModel):
     investment_returns: InvestmentReturnsConfig
     salary_growth: SalaryGrowthConfig
     tax: TaxConfig
+    scottish_tax: ScottishTaxConfig
     stamp_duty: StampDutyConfig
     ltv_rate_tiers: list[LtvTier]
     mortgage: MortgageConfig

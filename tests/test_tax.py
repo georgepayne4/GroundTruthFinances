@@ -211,6 +211,56 @@ class TestDividendTax:
 # Marriage Allowance
 # -----------------------------------------------------------------------
 
+SCOTTISH_CFG = {
+    "starter_rate": 0.19,
+    "starter_threshold": 14876,
+    "basic_rate": 0.20,
+    "basic_threshold": 26561,
+    "intermediate_rate": 0.21,
+    "intermediate_threshold": 43662,
+    "higher_rate": 0.42,
+    "higher_threshold": 75000,
+    "advanced_rate": 0.45,
+    "advanced_threshold": 125140,
+    "top_rate": 0.48,
+}
+
+
+class TestScottishIncomeTax:
+    def test_zero_income(self, tax_cfg):
+        assert calculate_income_tax(0, tax_cfg, scottish_cfg=SCOTTISH_CFG) == 0.0
+
+    def test_below_pa(self, tax_cfg):
+        assert calculate_income_tax(10000, tax_cfg, scottish_cfg=SCOTTISH_CFG) == 0.0
+
+    def test_starter_rate_only(self, tax_cfg):
+        # £14,876: taxable = 14876 - 12570 = 2306
+        # Starter band = 14876 - 12570 = 2306 at 19%
+        # Tax = 2306 * 0.19 = 438.14
+        result = calculate_income_tax(14876, tax_cfg, scottish_cfg=SCOTTISH_CFG)
+        assert result == 438.14
+
+    def test_scottish_higher_than_ruk(self, tax_cfg):
+        # At £50,000, Scottish tax should be higher than rUK due to 42% higher rate
+        ruk_tax = calculate_income_tax(50000, tax_cfg)
+        scot_tax = calculate_income_tax(50000, tax_cfg, scottish_cfg=SCOTTISH_CFG)
+        assert scot_tax > ruk_tax
+
+    def test_pa_taper_applies(self, tax_cfg):
+        # PA taper is set by Westminster, applies in Scotland too
+        result = calculate_income_tax(125140, tax_cfg, scottish_cfg=SCOTTISH_CFG)
+        assert result > 0
+        # Should be higher than rUK at this level
+        ruk_result = calculate_income_tax(125140, tax_cfg)
+        assert result > ruk_result
+
+    @given(income=st.floats(min_value=0, max_value=500_000, allow_nan=False))
+    def test_scottish_tax_never_exceeds_income(self, income):
+        tax = calculate_income_tax(income, TAX_CFG, scottish_cfg=SCOTTISH_CFG)
+        assert tax >= 0
+        assert tax <= income
+
+
 class TestMarriageAllowance:
     def test_eligible_couple(self, tax_cfg):
         # One earns £10k (below PA), other earns £30k (basic rate)
