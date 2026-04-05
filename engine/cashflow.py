@@ -71,6 +71,17 @@ def analyse_cashflow(profile: dict, assumptions: dict) -> dict[str, Any]:
     employer_pct = sav.get("pension_employer_contribution_pct", 0)
     pension_personal_annual = primary_gross * personal_pct
     pension_employer_annual = primary_gross * employer_pct
+    contribution_method = sav.get("pension_contribution_method", "personal")
+
+    # v5.1-11: Salary sacrifice — reduce gross for NI purposes
+    # With salary sacrifice, employee pension contributions are made pre-NI by the
+    # employer, so the employee saves NI on the sacrificed amount.
+    if contribution_method == "salary_sacrifice" and pension_personal_annual > 0:
+        salary_after_sacrifice = taxable_primary - pension_personal_annual
+        primary_ni = calculate_national_insurance(
+            max(0, salary_after_sacrifice), tax_cfg, self_employed=is_self_employed,
+        )
+        total_ni = primary_ni + partner_ni
 
     # T2-1: Partner pension contributions
     partner_pension_personal = 0
@@ -177,7 +188,17 @@ def analyse_cashflow(profile: dict, assumptions: dict) -> dict[str, Any]:
         }
 
     # ------------------------------------------------------------------
-    # 11. Assemble result
+    # 11. Salary sacrifice comparison (v5.1-11)
+    # ------------------------------------------------------------------
+    salary_sacrifice_comparison = None
+    if pension_personal_annual > 0 and not is_self_employed:
+        salary_sacrifice_comparison = _salary_sacrifice_comparison(
+            taxable_primary, pension_personal_annual, pension_employer_annual,
+            tax_cfg, contribution_method,
+        )
+
+    # ------------------------------------------------------------------
+    # 12. Assemble result
     # ------------------------------------------------------------------
     result = {
         "income": {
@@ -225,6 +246,8 @@ def analyse_cashflow(profile: dict, assumptions: dict) -> dict[str, Any]:
         result["spending_benchmarks"] = spending_benchmarks
     if self_employment_info:
         result["self_employment"] = self_employment_info
+    if salary_sacrifice_comparison:
+        result["salary_sacrifice_comparison"] = salary_sacrifice_comparison
 
     logger.info("Cashflow analysis complete")
     logger.debug("Cashflow: net=%.0f/mo, surplus=%.0f/mo, savings_rate=%.1f%%", net_monthly, surplus_monthly, savings_rate)
@@ -328,4 +351,48 @@ def _spending_benchmark_analysis(
         "total_potential_monthly_saving": round(total_potential_saving, 2),
         "top_overspend_categories": nudges,
         "top3_combined_saving_monthly": round(top3_saving, 2),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Salary sacrifice comparison (v5.1-11)
+# ---------------------------------------------------------------------------
+
+def _salary_sacrifice_comparison(
+    gross_salary: float,
+    personal_contribution: float,
+    employer_contribution: float,
+    tax_cfg: dict,
+    current_method: str,
+) -> dict:
+    """Compare personal pension contribution vs salary sacrifice.
+
+    Income tax relief is equivalent under both methods. The key difference:
+    salary sacrifice avoids employee NI (8%) and employer NI (15%) on the
+    sacrificed amount. Some employers pass the employer NI saving through
+    as additional pension contribution.
+    """
+    employee_ni_rate = tax_cfg.get("national_insurance_rate", 0.08)
+    employer_ni_rate = tax_cfg.get("employer_national_insurance_rate", 0.15)
+
+    employee_ni_saving = personal_contribution * employee_ni_rate
+    employer_ni_saving = personal_contribution * employer_ni_rate
+
+    return {
+        "current_method": current_method,
+        "personal_contribution_annual": round(personal_contribution, 2),
+        "employee_ni_saving_annual": round(employee_ni_saving, 2),
+        "employee_ni_saving_monthly": round(employee_ni_saving / 12, 2),
+        "employer_ni_saving_annual": round(employer_ni_saving, 2),
+        "combined_ni_saving_annual": round(employee_ni_saving + employer_ni_saving, 2),
+        "if_employer_passes_ni_saving": {
+            "additional_pension_annual": round(employer_ni_saving, 2),
+            "total_pension_with_passthrough": round(
+                personal_contribution + employer_contribution + employer_ni_saving, 2,
+            ),
+        },
+        "note": (
+            f"Salary sacrifice saves £{employee_ni_saving:,.0f}/year in employee NI. "
+            f"Employer also saves £{employer_ni_saving:,.0f}/year — ask if they pass this through as extra pension."
+        ),
     }

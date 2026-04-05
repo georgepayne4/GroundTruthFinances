@@ -271,14 +271,16 @@ def analyse_investments(profile: dict, assumptions: dict, cashflow: dict) -> dic
         tax_relief_amount = additional_personal * tax_relief_rate
         net_cost = additional_personal - tax_relief_amount
 
-        # NI saving if salary sacrifice
+        # NI saving if salary sacrifice (employee + employer)
         ni_rate = tax_cfg.get("national_insurance_rate", 0.08)
-        ni_saving_if_sacrifice = additional_personal * ni_rate
-        net_cost_salary_sacrifice = additional_personal - tax_relief_amount - ni_saving_if_sacrifice
+        employer_ni_rate = tax_cfg.get("employer_national_insurance_rate", 0.15)
+        employee_ni_saving = additional_personal * ni_rate
+        employer_ni_saving = additional_personal * employer_ni_rate
+        net_cost_salary_sacrifice = additional_personal - tax_relief_amount - employee_ni_saving
 
         # Total benefit = employer match + tax relief (+ NI saving if sacrifice)
         total_benefit_relief_at_source = additional_employer + tax_relief_amount
-        total_benefit_salary_sacrifice = additional_employer + tax_relief_amount + ni_saving_if_sacrifice
+        total_benefit_salary_sacrifice = additional_employer + tax_relief_amount + employee_ni_saving
 
         # ROI: benefit per £1 of net cost
         roi_relief = total_benefit_relief_at_source / net_cost if net_cost > 0 else float("inf")
@@ -296,7 +298,8 @@ def analyse_investments(profile: dict, assumptions: dict, cashflow: dict) -> dic
             "net_cost_after_tax_relief_annual": round(net_cost, 2),
             "net_cost_monthly": round(net_cost / 12, 2),
             "salary_sacrifice_option": {
-                "ni_saving_annual": round(ni_saving_if_sacrifice, 2),
+                "employee_ni_saving_annual": round(employee_ni_saving, 2),
+                "employer_ni_saving_annual": round(employer_ni_saving, 2),
                 "net_cost_annual": round(net_cost_salary_sacrifice, 2),
                 "net_cost_monthly": round(net_cost_salary_sacrifice / 12, 2),
                 "total_benefit_annual": round(total_benefit_salary_sacrifice, 2),

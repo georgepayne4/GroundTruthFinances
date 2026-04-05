@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-
-from engine.cashflow import analyse_cashflow
+from engine.cashflow import _salary_sacrifice_comparison, analyse_cashflow
 
 
 class TestCashflowBasic:
@@ -113,6 +111,111 @@ class TestSideIncomeTax:
         # £30k primary is entirely within basic band. Side income also basic rate.
         # £2400 * 0.20 = £480
         assert abs(other_tax - 480) < 1, f"Expected ~480, got {other_tax}"
+
+
+SS_TAX_CFG = {
+    "personal_allowance": 12570,
+    "basic_rate": 0.20,
+    "basic_threshold": 50270,
+    "higher_rate": 0.40,
+    "higher_threshold": 125140,
+    "additional_rate": 0.45,
+    "national_insurance_rate": 0.08,
+    "employer_national_insurance_rate": 0.15,
+    "employer_ni_threshold": 5000,
+}
+
+
+class TestSalarySacrifice:
+    """v5.1-11: Salary sacrifice modelling."""
+
+    def test_comparison_shows_ni_savings(self):
+        # ��50k salary, 5% personal contribution = £2,500
+        result = _salary_sacrifice_comparison(50000, 2500, 1500, SS_TAX_CFG, "personal")
+        assert result["employee_ni_saving_annual"] == 200.0  # 2500 * 0.08
+        assert result["employer_ni_saving_annual"] == 375.0  # 2500 * 0.15
+        assert result["combined_ni_saving_annual"] == 575.0
+
+    def test_comparison_employer_passthrough(self):
+        result = _salary_sacrifice_comparison(50000, 2500, 1500, SS_TAX_CFG, "personal")
+        passthrough = result["if_employer_passes_ni_saving"]
+        # 2500 personal + 1500 employer + 375 employer NI saving
+        assert passthrough["total_pension_with_passthrough"] == 4375.0
+
+    def test_salary_sacrifice_mode_reduces_ni(self, assumptions):
+        from engine.loader import _normalise_profile
+        base = {
+            "personal": {"age": 30, "employment_type": "employed"},
+            "income": {"primary_gross_annual": 50000},
+            "expenses": {"housing": {"rent_monthly": 800}},
+            "savings": {
+                "pension_personal_contribution_pct": 0.05,
+                "pension_employer_contribution_pct": 0.03,
+            },
+            "debts": [],
+            "goals": [],
+        }
+        profile_personal = _normalise_profile(dict(base))
+        result_personal = analyse_cashflow(profile_personal, assumptions)
+
+        base_ss = dict(base)
+        base_ss["savings"] = dict(base["savings"])
+        base_ss["savings"]["pension_contribution_method"] = "salary_sacrifice"
+        profile_ss = _normalise_profile(base_ss)
+        result_ss = analyse_cashflow(profile_ss, assumptions)
+
+        # Salary sacrifice should have lower NI (higher take-home)
+        ni_personal = result_personal["deductions"]["national_insurance_annual"]
+        ni_ss = result_ss["deductions"]["national_insurance_annual"]
+        assert ni_ss < ni_personal, f"SS NI {ni_ss} should be less than personal {ni_personal}"
+
+        # Net income should be higher under salary sacrifice
+        net_personal = result_personal["net_income"]["annual"]
+        net_ss = result_ss["net_income"]["annual"]
+        assert net_ss > net_personal
+
+    def test_salary_sacrifice_ni_saving_amount(self, assumptions):
+        """Employee NI saving should equal contribution * NI rate."""
+        from engine.loader import _normalise_profile
+        base = {
+            "personal": {"age": 30, "employment_type": "employed"},
+            "income": {"primary_gross_annual": 50000},
+            "expenses": {"housing": {"rent_monthly": 800}},
+            "savings": {
+                "pension_personal_contribution_pct": 0.05,
+                "pension_employer_contribution_pct": 0.03,
+            },
+            "debts": [],
+            "goals": [],
+        }
+        profile_personal = _normalise_profile(dict(base))
+        result_personal = analyse_cashflow(profile_personal, assumptions)
+
+        base_ss = dict(base)
+        base_ss["savings"] = dict(base["savings"])
+        base_ss["savings"]["pension_contribution_method"] = "salary_sacrifice"
+        profile_ss = _normalise_profile(base_ss)
+        result_ss = analyse_cashflow(profile_ss, assumptions)
+
+        ni_diff = (
+            result_personal["deductions"]["national_insurance_annual"]
+            - result_ss["deductions"]["national_insurance_annual"]
+        )
+        # Contribution = 50000 * 0.05 = 2500. NI rate = 0.08. Expected saving = 200
+        assert abs(ni_diff - 200) < 1
+
+    def test_comparison_included_in_result(self, sample_profile, assumptions):
+        result = analyse_cashflow(sample_profile, assumptions)
+        # sample_profile has pension contributions, so comparison should exist
+        assert "salary_sacrifice_comparison" in result
+        ss = result["salary_sacrifice_comparison"]
+        assert ss["current_method"] == "personal"
+        assert ss["employee_ni_saving_annual"] > 0
+
+    def test_no_comparison_for_self_employed(self, self_employed_profile, assumptions):
+        result = analyse_cashflow(self_employed_profile, assumptions)
+        # Salary sacrifice is only for employed — not available for self-employed
+        assert "salary_sacrifice_comparison" not in result
 
 
 class TestCashflowPartner:

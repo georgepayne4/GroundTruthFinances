@@ -42,6 +42,8 @@ class TaxConfig(BaseModel):
     higher_threshold: int = Field(gt=0)
     additional_rate: float = Field(ge=0.0, le=1.0)
     national_insurance_rate: float = Field(ge=0.0, le=1.0)
+    employer_national_insurance_rate: float = Field(default=0.15, ge=0.0, le=1.0)
+    employer_ni_threshold: int = Field(default=5000, gt=0)
     marriage_allowance_transfer: int = Field(default=1260, ge=0)
 
 

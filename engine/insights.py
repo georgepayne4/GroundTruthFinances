@@ -457,10 +457,12 @@ def _investment_insights(investment_analysis: dict, personal: dict) -> list[str]
         if ss:
             ss_cost = ss.get("net_cost_monthly", 0)
             ss_roi = ss.get("roi_per_pound", 0)
-            ni_saving = ss.get("ni_saving_annual", 0)
+            employee_ni = ss.get("employee_ni_saving_annual", 0)
+            employer_ni = ss.get("employer_ni_saving_annual", 0)
             insights.append(
                 f"  Via salary sacrifice: net cost drops to £{ss_cost:,.0f}/month "
-                f"(additional £{ni_saving:,.0f}/year NI saving). ROI: £{ss_roi:.2f} per £1."
+                f"(employee NI saving £{employee_ni:,.0f}/year, employer NI saving £{employer_ni:,.0f}/year). "
+                f"ROI: £{ss_roi:.2f} per £1."
             )
 
     # IA-3: Emergency fund warning

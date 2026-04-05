@@ -34,6 +34,8 @@ tax:
   higher_threshold: 125140             # Source: HMRC 2025/26
   additional_rate: 0.45                # Source: HMRC 2025/26
   national_insurance_rate: 0.08        # Source: HMRC 2025/26 Class 1 employee rate
+  employer_national_insurance_rate: 0.15  # Source: HMRC 2025/26 (increased from 13.8% in Autumn Budget 2024)
+  employer_ni_threshold: 5000          # Source: HMRC 2025/26 (reduced from £9,100)
   marriage_allowance_transfer: 1260    # Source: HMRC 2025/26 (10% of PA transferable)
 
 scottish_tax:
