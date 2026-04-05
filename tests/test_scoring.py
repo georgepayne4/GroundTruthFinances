@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from engine.cashflow import analyse_cashflow
 from engine.debt import analyse_debt
 from engine.goals import analyse_goals

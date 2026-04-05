@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import pytest
-from hypothesis import given, settings, HealthCheck, strategies as st
+from hypothesis import given
+from hypothesis import strategies as st
 
 from engine.tax import (
+    calculate_capital_gains_tax,
+    calculate_dividend_tax,
     calculate_income_tax,
     calculate_marriage_allowance,
     calculate_national_insurance,
     calculate_tax_on_pension_withdrawal,
-    calculate_capital_gains_tax,
-    calculate_dividend_tax,
 )
 
 TAX_CFG = {

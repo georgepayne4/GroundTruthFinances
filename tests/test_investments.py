@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-
-from engine.investments import analyse_investments, _check_annual_allowance
-
+from engine.investments import _check_annual_allowance, analyse_investments
 
 AA_CFG = {
     "standard": 60000,

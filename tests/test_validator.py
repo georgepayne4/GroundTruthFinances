@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-
-from engine.validator import validate_profile, Severity
+from engine.validator import Severity, validate_profile
 
 
 class TestValidatorRequiredSections:

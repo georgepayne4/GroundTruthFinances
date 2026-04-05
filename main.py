@@ -24,23 +24,23 @@ import logging
 import sys
 from pathlib import Path
 
-from engine.loader import load_profile, load_assumptions
-from engine.validator import validate_profile
+import engine
 from engine.cashflow import analyse_cashflow
 from engine.debt import analyse_debt
+from engine.estate import analyse_estate
 from engine.goals import analyse_goals
-from engine.investments import analyse_investments
-from engine.mortgage import analyse_mortgage
-from engine.life_events import simulate_life_events
-from engine.scoring import calculate_scores
 from engine.insights import generate_insights
 from engine.insurance import assess_insurance
-from engine.scenarios import run_scenarios
-from engine.estate import analyse_estate
-from engine.sensitivity import run_sensitivity
-from engine.report import assemble_report, save_report
+from engine.investments import analyse_investments
+from engine.life_events import simulate_life_events
+from engine.loader import load_assumptions, load_profile
+from engine.mortgage import analyse_mortgage
 from engine.narrative import generate_narrative
-import engine
+from engine.report import assemble_report, save_report
+from engine.scenarios import run_scenarios
+from engine.scoring import calculate_scores
+from engine.sensitivity import run_sensitivity
+from engine.validator import validate_profile
 
 logger = logging.getLogger(__name__)
 

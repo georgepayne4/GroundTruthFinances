@@ -6,8 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from engine.loader import load_profile, load_assumptions
-
+from engine.loader import load_assumptions, load_profile
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
