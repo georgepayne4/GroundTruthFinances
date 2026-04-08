@@ -13,7 +13,8 @@ addressed before discretionary goals receive surplus allocation.
 from __future__ import annotations
 
 import logging
-from typing import Any
+
+from engine.types import AssumptionsDict, CashflowResult, DebtResult, GoalsResult, ProfileDict
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +24,9 @@ PRIORITY_RANK = {"high": 1, "medium": 2, "low": 3}
 
 
 def analyse_goals(
-    profile: dict, assumptions: dict, cashflow: dict,
-    debt_analysis: dict | None = None,
-) -> dict[str, Any]:
+    profile: ProfileDict, assumptions: AssumptionsDict, cashflow: CashflowResult,
+    debt_analysis: DebtResult | None = None,
+) -> GoalsResult:
     """
     For each goal:
     - Check prerequisites (T1-1)

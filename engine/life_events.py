@@ -15,18 +15,23 @@ Supports:
 from __future__ import annotations
 
 import logging
-from typing import Any
 
+from engine.types import (
+    AssumptionsDict,
+    CashflowResult,
+    LifeEventsResult,
+    ProfileDict,
+)
 from engine.utils import monthly_repayment as _monthly_repayment
 
 logger = logging.getLogger(__name__)
 
 
 def simulate_life_events(
-    profile: dict,
-    assumptions: dict,
-    cashflow: dict,
-) -> dict[str, Any]:
+    profile: ProfileDict,
+    assumptions: AssumptionsDict,
+    cashflow: CashflowResult,
+) -> LifeEventsResult:
     """
     Run a year-by-year simulation of the user's financial trajectory.
     T1-1: Uses assumptions for surplus split and debt reduction,

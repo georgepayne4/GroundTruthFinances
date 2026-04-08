@@ -12,29 +12,44 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 import engine
+from engine.types import (
+    CashflowResult,
+    DebtResult,
+    EstateResult,
+    GoalsResult,
+    InsightsResult,
+    InsuranceResult,
+    InvestmentsResult,
+    LifeEventsResult,
+    MortgageResult,
+    ProfileDict,
+    ReportDict,
+    ScenariosResult,
+    ScoringResult,
+    SensitivityResult,
+)
 
 logger = logging.getLogger(__name__)
 
 
 def assemble_report(
-    profile: dict,
+    profile: ProfileDict,
     validation_flags: list[dict],
-    cashflow: dict,
-    debt_analysis: dict,
-    goal_analysis: dict,
-    investment_analysis: dict,
-    mortgage_analysis: dict,
-    life_events: dict,
-    scoring: dict,
-    insights: dict,
-    insurance: dict | None = None,
-    scenarios: dict | None = None,
-    estate: dict | None = None,
-    sensitivity: dict | None = None,
-) -> dict[str, Any]:
+    cashflow: CashflowResult,
+    debt_analysis: DebtResult,
+    goal_analysis: GoalsResult,
+    investment_analysis: InvestmentsResult,
+    mortgage_analysis: MortgageResult,
+    life_events: LifeEventsResult,
+    scoring: ScoringResult,
+    insights: InsightsResult,
+    insurance: InsuranceResult | None = None,
+    scenarios: ScenariosResult | None = None,
+    estate: EstateResult | None = None,
+    sensitivity: SensitivityResult | None = None,
+) -> ReportDict:
     """
     Assemble all analysis results into the final report structure.
     """

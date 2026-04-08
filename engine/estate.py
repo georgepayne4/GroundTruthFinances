@@ -9,18 +9,26 @@ exemption rules.
 from __future__ import annotations
 
 import logging
-from typing import Any
+
+from engine.types import (
+    AssumptionsDict,
+    CashflowResult,
+    EstateResult,
+    InvestmentsResult,
+    MortgageResult,
+    ProfileDict,
+)
 
 logger = logging.getLogger(__name__)
 
 
 def analyse_estate(
-    profile: dict,
-    assumptions: dict,
-    investment_analysis: dict,
-    mortgage_analysis: dict,
-    cashflow: dict | None = None,
-) -> dict[str, Any]:
+    profile: ProfileDict,
+    assumptions: AssumptionsDict,
+    investment_analysis: InvestmentsResult,
+    mortgage_analysis: MortgageResult,
+    cashflow: CashflowResult | None = None,
+) -> EstateResult:
     """
     Project estate value and calculate potential inheritance tax liability.
     """

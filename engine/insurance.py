@@ -13,15 +13,23 @@ T1-1: Cross-references pension adequacy to adjust coverage recommendations.
 from __future__ import annotations
 
 import logging
-from typing import Any
+
+from engine.types import (
+    AssumptionsDict,
+    CashflowResult,
+    InsuranceResult,
+    InvestmentsResult,
+    MortgageResult,
+    ProfileDict,
+)
 
 logger = logging.getLogger(__name__)
 
 
 def assess_insurance(
-    profile: dict, assumptions: dict, cashflow: dict,
-    mortgage_analysis: dict, investment_analysis: dict | None = None,
-) -> dict[str, Any]:
+    profile: ProfileDict, assumptions: AssumptionsDict, cashflow: CashflowResult,
+    mortgage_analysis: MortgageResult, investment_analysis: InvestmentsResult | None = None,
+) -> InsuranceResult:
     """
     Assess insurance coverage adequacy and identify gaps.
     T1-1: Accepts investment_analysis to cross-reference pension adequacy.

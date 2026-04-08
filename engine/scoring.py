@@ -8,20 +8,30 @@ category breakdowns. Includes IA-3 emergency fund placement penalty.
 from __future__ import annotations
 
 import logging
-from typing import Any
+
+from engine.types import (
+    AssumptionsDict,
+    CashflowResult,
+    DebtResult,
+    GoalsResult,
+    InvestmentsResult,
+    MortgageResult,
+    ProfileDict,
+    ScoringResult,
+)
 
 logger = logging.getLogger(__name__)
 
 
 def calculate_scores(
-    profile: dict,
-    assumptions: dict,
-    cashflow: dict,
-    debt_analysis: dict,
-    goal_analysis: dict,
-    investment_analysis: dict,
-    mortgage_analysis: dict,
-) -> dict[str, Any]:
+    profile: ProfileDict,
+    assumptions: AssumptionsDict,
+    cashflow: CashflowResult,
+    debt_analysis: DebtResult,
+    goal_analysis: GoalsResult,
+    investment_analysis: InvestmentsResult,
+    mortgage_analysis: MortgageResult,
+) -> ScoringResult:
     """
     Calculate financial health score with category breakdown.
     """

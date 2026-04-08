@@ -10,12 +10,13 @@ T1-5: Student loan write-off intelligence with break-even salary.
 from __future__ import annotations
 
 import logging
-from typing import Any
+
+from engine.types import AssumptionsDict, DebtResult, ProfileDict
 
 logger = logging.getLogger(__name__)
 
 
-def analyse_debt(profile: dict, assumptions: dict) -> dict[str, Any]:
+def analyse_debt(profile: ProfileDict, assumptions: AssumptionsDict) -> DebtResult:
     """
     Produce a complete debt analysis:
     - Per-debt breakdown with payoff timeline and total interest

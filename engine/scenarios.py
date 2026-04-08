@@ -14,21 +14,29 @@ Each scenario recalculates key metrics and reports the impact.
 from __future__ import annotations
 
 import logging
-from typing import Any
 
+from engine.types import (
+    AssumptionsDict,
+    CashflowResult,
+    DebtResult,
+    InvestmentsResult,
+    MortgageResult,
+    ProfileDict,
+    ScenariosResult,
+)
 from engine.utils import monthly_repayment as _amortising_payment
 
 logger = logging.getLogger(__name__)
 
 
 def run_scenarios(
-    profile: dict,
-    assumptions: dict,
-    cashflow: dict,
-    debt_analysis: dict,
-    mortgage_analysis: dict,
-    investment_analysis: dict,
-) -> dict[str, Any]:
+    profile: ProfileDict,
+    assumptions: AssumptionsDict,
+    cashflow: CashflowResult,
+    debt_analysis: DebtResult,
+    mortgage_analysis: MortgageResult,
+    investment_analysis: InvestmentsResult,
+) -> ScenariosResult:
     """Run all stress scenarios and return results."""
     scn_cfg = assumptions.get("scenarios", {})
     return {

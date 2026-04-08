@@ -14,23 +14,31 @@ from __future__ import annotations
 
 import copy
 import logging
-from typing import Any
 
 from engine.cashflow import analyse_cashflow
 from engine.investments import analyse_investments
 from engine.mortgage import analyse_mortgage
+from engine.types import (
+    AssumptionsDict,
+    CashflowResult,
+    DebtResult,
+    InvestmentsResult,
+    MortgageResult,
+    ProfileDict,
+    SensitivityResult,
+)
 
 logger = logging.getLogger(__name__)
 
 
 def run_sensitivity(
-    profile: dict,
-    assumptions: dict,
-    cashflow: dict,
-    debt_analysis: dict,
-    investment_analysis: dict,
-    mortgage_analysis: dict,
-) -> dict[str, Any]:
+    profile: ProfileDict,
+    assumptions: AssumptionsDict,
+    cashflow: CashflowResult,
+    debt_analysis: DebtResult,
+    investment_analysis: InvestmentsResult,
+    mortgage_analysis: MortgageResult,
+) -> SensitivityResult:
     """
     Run sensitivity analysis across multiple what-if dimensions.
     Returns baseline metrics plus delta for each scenario.

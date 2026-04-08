@@ -16,14 +16,23 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Any
 
+from engine.types import (
+    AssumptionsDict,
+    CashflowResult,
+    DebtResult,
+    MortgageResult,
+    ProfileDict,
+)
 from engine.utils import monthly_repayment as _monthly_repayment
 
 logger = logging.getLogger(__name__)
 
 
-def analyse_mortgage(profile: dict, assumptions: dict, cashflow: dict, debt_analysis: dict) -> dict[str, Any]:
+def analyse_mortgage(
+    profile: ProfileDict, assumptions: AssumptionsDict,
+    cashflow: CashflowResult, debt_analysis: DebtResult,
+) -> MortgageResult:
     """
     Comprehensive mortgage readiness assessment.
     """

@@ -21,20 +21,33 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any
 
+from engine.types import (
+    AssumptionsDict,
+    CashflowResult,
+    DebtResult,
+    GoalsResult,
+    InsightsResult,
+    InvestmentsResult,
+    LifeEventsResult,
+    MortgageResult,
+    ProfileDict,
+    ScoringResult,
+)
+
 logger = logging.getLogger(__name__)
 
 
 def generate_insights(
-    profile: dict,
-    assumptions: dict,
-    cashflow: dict,
-    debt_analysis: dict,
-    goal_analysis: dict,
-    investment_analysis: dict,
-    mortgage_analysis: dict,
-    scoring: dict,
-    life_events: dict,
-) -> dict[str, Any]:
+    profile: ProfileDict,
+    assumptions: AssumptionsDict,
+    cashflow: CashflowResult,
+    debt_analysis: DebtResult,
+    goal_analysis: GoalsResult,
+    investment_analysis: InvestmentsResult,
+    mortgage_analysis: MortgageResult,
+    scoring: ScoringResult,
+    life_events: LifeEventsResult,
+) -> InsightsResult:
     """Generate a structured set of advisor insights."""
     personal = profile.get("personal", {})
     name = personal.get("name", "Client")

@@ -11,6 +11,13 @@ from __future__ import annotations
 
 import logging
 
+from engine.types import (
+    CapitalGainsTaxResult,
+    DividendTaxResult,
+    MarriageAllowanceResult,
+    PensionWithdrawalTaxResult,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -93,7 +100,7 @@ def _scottish_income_tax(taxable: float, effective_pa: float, scot: dict) -> flo
 
 def calculate_marriage_allowance(
     earner_gross: float, partner_gross: float, tax_cfg: dict,
-) -> dict:
+) -> MarriageAllowanceResult:
     """Check eligibility and calculate Marriage Allowance tax saving.
 
     One partner (the transferor) must earn below the personal allowance.
@@ -162,7 +169,7 @@ def calculate_national_insurance(
 
 def calculate_tax_on_pension_withdrawal(
     annual_drawdown: float, state_pension_annual: float, tax_cfg: dict,
-) -> dict:
+) -> PensionWithdrawalTaxResult:
     """
     Calculate tax on pension income in retirement.
     - 25% of pension drawdown is tax-free
@@ -197,7 +204,7 @@ def calculate_capital_gains_tax(
     gain: float, gross_income: float,
     cgt_cfg: dict, tax_cfg: dict,
     is_property: bool = False,
-) -> dict:
+) -> CapitalGainsTaxResult:
     """
     Calculate capital gains tax on a disposal.
     Rates depend on whether gain is from property and taxpayer's income level.
@@ -251,7 +258,7 @@ def calculate_capital_gains_tax(
 def calculate_dividend_tax(
     dividends: float, gross_income: float,
     div_cfg: dict, tax_cfg: dict,
-) -> dict:
+) -> DividendTaxResult:
     """
     Calculate tax on dividend income.
     Dividend allowance shelters the first portion; remainder taxed at

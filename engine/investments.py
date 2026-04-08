@@ -19,12 +19,17 @@ Comprehensive investment analysis including:
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from engine.tax import (
     calculate_capital_gains_tax,
     calculate_dividend_tax,
     calculate_tax_on_pension_withdrawal,
+)
+from engine.types import (
+    AssumptionsDict,
+    CashflowResult,
+    InvestmentsResult,
+    ProfileDict,
 )
 
 logger = logging.getLogger(__name__)
@@ -99,7 +104,9 @@ MODEL_PORTFOLIOS = {
 }
 
 
-def analyse_investments(profile: dict, assumptions: dict, cashflow: dict) -> dict[str, Any]:
+def analyse_investments(
+    profile: ProfileDict, assumptions: AssumptionsDict, cashflow: CashflowResult,
+) -> InvestmentsResult:
     """
     Produce comprehensive investment analysis.
     """
