@@ -151,6 +151,56 @@ def load_assumptions(path: str | Path | None = None) -> dict[str, Any]:
 # Normalisation helpers
 # ---------------------------------------------------------------------------
 
+_ACCOUNT_TYPE_MAPPING: dict[str, str] = {
+    # account type → savings field it contributes to by default
+    "current": "general_savings",
+    "savings": "general_savings",
+    "easy_access": "general_savings",
+    "money_market": "general_savings",
+    "premium_bonds": "general_savings",
+    "isa": "isa_balance",
+    "cash_isa": "isa_balance",
+    "stocks_and_shares_isa": "isa_balance",
+    "lisa": "lisa_balance",
+    "cash_lisa": "lisa_balance",
+    "stocks_and_shares_lisa": "lisa_balance",
+    "pension": "pension_balance",
+    "sipp": "pension_balance",
+    "investment": "other_investments",
+    "stocks_and_shares": "other_investments",
+    "gia": "other_investments",
+    "crypto": "other_investments",
+}
+
+
+def _aggregate_accounts(profile: dict) -> dict[str, float]:
+    """v5.2-04: aggregate the accounts[] block into savings_field → total.
+
+    Each account contributes to one savings field, determined by:
+      1. explicit `maps_to` field on the account, OR
+      2. _ACCOUNT_TYPE_MAPPING[account.type], OR
+      3. "general_savings" as a safe fallback for unknown types.
+
+    Returns a {savings_field: total} dict, plus an "_account_breakdown" key
+    listing per-account routing for debugging / display.
+    """
+    accounts = profile.get("accounts", []) or []
+    totals: dict[str, float] = {}
+    for acc in accounts:
+        if not isinstance(acc, dict):
+            continue
+        balance = acc.get("balance", 0) or 0
+        if balance == 0:
+            continue
+        target = (
+            acc.get("maps_to")
+            or _ACCOUNT_TYPE_MAPPING.get(acc.get("type", "").lower())
+            or "general_savings"
+        )
+        totals[target] = totals.get(target, 0) + balance
+    return totals
+
+
 def _normalise_profile(raw: dict) -> dict:
     """
     Walk the raw YAML and attach computed convenience fields so that
@@ -214,6 +264,17 @@ def _normalise_profile(raw: dict) -> dict:
 
     # --- Savings / Net Worth ---
     sav = profile.get("savings", {})
+
+    # v5.2-04: aggregate accounts[] block into savings fields. Mapped fields
+    # are REPLACED by the account total — single source of truth per field.
+    # Direct savings fields with no matching account are left untouched.
+    account_totals = _aggregate_accounts(profile)
+    overridden_fields: list[str] = []
+    for field, total in account_totals.items():
+        if field in sav and sav[field] != total:
+            overridden_fields.append(field)
+        sav[field] = total
+
     liquid = (
         sav.get("emergency_fund", 0)
         + sav.get("general_savings", 0)
@@ -224,6 +285,10 @@ def _normalise_profile(raw: dict) -> dict:
     sav["_total_liquid"] = liquid
     sav["_total_illiquid"] = illiquid
     sav["_total_assets"] = liquid + illiquid
+    if account_totals:
+        sav["_account_aggregated_fields"] = sorted(account_totals.keys())
+    if overridden_fields:
+        sav["_account_overridden_fields"] = overridden_fields
     profile["savings"] = sav
 
     # Net worth still subtracts paid-in-full card balances: the cash to clear

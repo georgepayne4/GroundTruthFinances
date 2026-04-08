@@ -51,6 +51,7 @@ def validate_profile(profile: dict, assumptions: dict) -> list[ValidationFlag]:
     flags.extend(_check_expenses(profile))
     flags.extend(_check_debts(profile, assumptions))
     flags.extend(_check_savings(profile, assumptions))
+    flags.extend(_check_accounts(profile))
     flags.extend(_check_goals(profile))
     flags.extend(_check_mortgage(profile, assumptions))
     flags.extend(_check_cross_field_consistency(profile, assumptions))
@@ -338,6 +339,103 @@ def _check_savings(profile: dict, assumptions: dict) -> list[ValidationFlag]:
             flags.append(ValidationFlag("savings.lisa_property", Severity.WARNING,
                                         f"Target property ({target_property:,.0f}) exceeds LISA limit ({lisa_property_limit:,.0f}).",
                                         "LISA bonus cannot be used for properties above this threshold."))
+
+    return flags
+
+
+def _check_accounts(profile: dict) -> list[ValidationFlag]:
+    """v5.2-04: validate the optional accounts[] block.
+
+    Each entry must have a name, a non-negative balance, and ideally a
+    recognised type. Total accounts balance is sanity-checked against the
+    aggregated savings totals.
+    """
+    flags: list[ValidationFlag] = []
+    accounts = profile.get("accounts")
+    if accounts is None:
+        return flags
+    if not isinstance(accounts, list):
+        flags.append(ValidationFlag(
+            "accounts", Severity.ERROR,
+            "accounts must be a list of account entries.",
+            "Use a YAML list under the 'accounts:' key.",
+        ))
+        return flags
+
+    # Lazy import to avoid circular dependency
+    from engine.loader import _ACCOUNT_TYPE_MAPPING
+
+    known_types = set(_ACCOUNT_TYPE_MAPPING.keys())
+    seen_names: set[str] = set()
+
+    for i, acc in enumerate(accounts):
+        prefix = f"accounts[{i}]"
+        if not isinstance(acc, dict):
+            flags.append(ValidationFlag(
+                prefix, Severity.ERROR,
+                "Account entry must be a mapping.",
+                "Each account needs name, type, balance fields.",
+            ))
+            continue
+
+        name = acc.get("name", "").strip() if isinstance(acc.get("name"), str) else ""
+        if not name:
+            flags.append(ValidationFlag(
+                f"{prefix}.name", Severity.WARNING,
+                "Account is missing a name.",
+                "Add a descriptive name like 'Monzo Current Account'.",
+            ))
+        elif name in seen_names:
+            flags.append(ValidationFlag(
+                f"{prefix}.name", Severity.INFO,
+                f"Duplicate account name '{name}'.",
+                "Account names should be unique for clarity.",
+            ))
+        seen_names.add(name)
+
+        balance = acc.get("balance")
+        if balance is None:
+            flags.append(ValidationFlag(
+                f"{prefix}.balance", Severity.WARNING,
+                f"Account '{name}' has no balance set.",
+                "Set balance to 0 if the account is empty.",
+            ))
+        elif not isinstance(balance, (int, float)):
+            flags.append(ValidationFlag(
+                f"{prefix}.balance", Severity.ERROR,
+                f"Account '{name}' balance must be numeric.",
+                "Use a number, not a string.",
+            ))
+        elif balance < 0:
+            flags.append(ValidationFlag(
+                f"{prefix}.balance", Severity.ERROR,
+                f"Account '{name}' balance cannot be negative.",
+                "Negative balances belong in the debts section.",
+            ))
+
+        acc_type = (acc.get("type") or "").lower()
+        if not acc_type:
+            flags.append(ValidationFlag(
+                f"{prefix}.type", Severity.INFO,
+                f"Account '{name}' has no type — defaulting to 'general_savings'.",
+                f"Set 'type' to one of: {', '.join(sorted(known_types))}.",
+            ))
+        elif acc_type not in known_types and not acc.get("maps_to"):
+            flags.append(ValidationFlag(
+                f"{prefix}.type", Severity.WARNING,
+                f"Unrecognised account type '{acc_type}' on '{name}'.",
+                f"Use a known type or set 'maps_to' explicitly. Known: {', '.join(sorted(known_types))}.",
+            ))
+
+    # If accounts override direct savings fields, surface that as INFO
+    sav = profile.get("savings", {})
+    overridden = sav.get("_account_overridden_fields", [])
+    if overridden:
+        flags.append(ValidationFlag(
+            "savings", Severity.INFO,
+            f"Account aggregation overrode direct savings fields: {', '.join(overridden)}.",
+            "Remove the direct fields if you intend to manage balances via the accounts[] block.",
+        ))
 
     return flags
 
