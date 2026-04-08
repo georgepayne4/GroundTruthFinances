@@ -15,6 +15,7 @@ Usage:
     python main.py                                    # uses sample input
     python main.py --profile path/to/profile.yaml     # custom profile
     python main.py --assumptions path/to/assumptions.yaml
+    python main.py --import-csv path/to/statement.csv # preview bank CSV import
 """
 
 from __future__ import annotations
@@ -24,11 +25,14 @@ import logging
 import sys
 from pathlib import Path
 
+import yaml
+
 import engine
 from engine.cashflow import analyse_cashflow
 from engine.debt import analyse_debt
 from engine.estate import analyse_estate
 from engine.goals import analyse_goals
+from engine.import_csv import import_bank_csv
 from engine.insights import generate_insights
 from engine.insurance import assess_insurance
 from engine.investments import analyse_investments
@@ -60,6 +64,11 @@ def main() -> None:
         handlers=handlers,
     )
     logger.info("GroundTruth engine v%s starting", engine.__version__)
+
+    # v5.2-01: CSV import preview mode — short-circuits the main pipeline
+    if args.import_csv:
+        _run_csv_preview(args.import_csv)
+        return
 
     project_root = Path(__file__).resolve().parent
 
@@ -360,6 +369,27 @@ def main() -> None:
     print("Done.")
 
 
+def _run_csv_preview(csv_path: Path) -> None:
+    """Parse a bank CSV and print a YAML-formatted expenses preview to stdout."""
+    print(f"Importing bank CSV: {csv_path}")
+    print("=" * 60)
+    result = import_bank_csv(csv_path)
+    summary = result["summary"]
+    print(f"  Bank format:        {summary.get('bank', 'unknown')}")
+    print(f"  Transactions:       {summary['transactions_parsed']}")
+    print(f"  Outflows:           {summary['outflow_count']}")
+    print(f"  Inflows:            {summary['inflow_count']}")
+    print(f"  Uncategorised:      {summary['uncategorised_count']}")
+    if summary.get("date_range"):
+        dr = summary["date_range"]
+        print(f"  Date range:         {dr['start']} to {dr['end']}")
+    print(f"  Months covered:     {summary.get('months_covered', 1)}")
+    print(f"\n{'=' * 60}")
+    print("Generated expenses block (paste into your profile YAML):")
+    print(f"{'=' * 60}\n")
+    print(yaml.safe_dump({"expenses": result["expenses"]}, sort_keys=False, default_flow_style=False))
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="GroundTruth Financial Planning Engine",
@@ -375,6 +405,12 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         help="Path to the assumptions YAML file (default: config/assumptions.yaml)",
+    )
+    parser.add_argument(
+        "--import-csv",
+        type=Path,
+        default=None,
+        help="Parse a bank statement CSV and print a profile-compatible expenses preview",
     )
     parser.add_argument(
         "--verbose", "-v",

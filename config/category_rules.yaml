@@ -1,0 +1,153 @@
+# category_rules.yaml — Bank Transaction Auto-Categorisation Rules
+#
+# Maps merchant/description keywords to expense categories used in profile YAML.
+# Matching is case-insensitive substring; the first rule whose keyword appears
+# in the description wins.
+#
+# Top-level keys correspond to profile expense categories.
+# Sub-keys correspond to monthly expense fields (loader sums any field ending
+# in "_monthly" or "_annual"). Sub-key names match those used in
+# config/sample_input.yaml so output is profile-compatible.
+#
+# To extend: add new keywords under an existing category, or add a new
+# sub-key (it must end in "_monthly" or "_annual" to be picked up).
+
+housing:
+  rent_monthly:
+    - "rent"
+    - "landlord"
+    - "letting"
+  council_tax_monthly:
+    - "council tax"
+    - "council"
+  utilities_monthly:
+    - "british gas"
+    - "octopus energy"
+    - "edf energy"
+    - "eon next"
+    - "ovo energy"
+    - "scottish power"
+    - "bulb"
+    - "thames water"
+    - "anglian water"
+    - "severn trent"
+    - "yorkshire water"
+    - "united utilities"
+  insurance_monthly:
+    - "home insurance"
+    - "buildings insurance"
+    - "contents insurance"
+    - "aviva"
+    - "direct line"
+    - "admiral"
+    - "lv="
+
+transport:
+  fuel_monthly:
+    - "shell"
+    - "bp"
+    - "esso"
+    - "tesco fuel"
+    - "sainsbury fuel"
+    - "morrisons fuel"
+    - "petrol"
+  public_transport_monthly:
+    - "tfl"
+    - "transport for london"
+    - "trainline"
+    - "national rail"
+    - "lner"
+    - "gwr"
+    - "avanti"
+    - "stagecoach"
+    - "uber"
+    - "bolt"
+  car_payment_monthly:
+    - "car finance"
+    - "vehicle loan"
+    - "lex autolease"
+    - "alphabet"
+    - "leaseplan"
+
+living:
+  groceries_monthly:
+    - "tesco"
+    - "sainsbury"
+    - "asda"
+    - "morrisons"
+    - "aldi"
+    - "lidl"
+    - "waitrose"
+    - "iceland"
+    - "co-op"
+    - "marks & spencer food"
+    - "ocado"
+    - "m&s simply food"
+  dining_out_monthly:
+    - "restaurant"
+    - "deliveroo"
+    - "uber eats"
+    - "just eat"
+    - "wagamama"
+    - "nando"
+    - "pret"
+    - "starbucks"
+    - "costa"
+    - "greggs"
+    - "mcdonald"
+    - "kfc"
+    - "pizza"
+    - "wetherspoon"
+    - "pub"
+  subscriptions_monthly:
+    - "netflix"
+    - "spotify"
+    - "amazon prime"
+    - "disney+"
+    - "apple.com/bill"
+    - "icloud"
+    - "youtube premium"
+    - "audible"
+    - "now tv"
+    - "hayu"
+  clothing_monthly:
+    - "h&m"
+    - "zara"
+    - "uniqlo"
+    - "next retail"
+    - "asos"
+    - "primark"
+    - "john lewis"
+    - "marks & spencer"
+  personal_care_monthly:
+    - "boots"
+    - "superdrug"
+    - "lloyds pharmacy"
+    - "barber"
+    - "hairdresser"
+    - "salon"
+
+other:
+  phone_monthly:
+    - "ee mobile"
+    - "o2"
+    - "vodafone"
+    - "three mobile"
+    - "giffgaff"
+    - "tesco mobile"
+    - "sky mobile"
+    - "id mobile"
+  gym_monthly:
+    - "puregym"
+    - "the gym group"
+    - "david lloyd"
+    - "virgin active"
+    - "fitness first"
+    - "anytime fitness"
+  miscellaneous_monthly:
+    - "amazon"
+    - "argos"
+    - "currys"
+    - "ikea"
+    - "b&q"
+    - "homebase"
