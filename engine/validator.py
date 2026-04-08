@@ -152,6 +152,16 @@ def _check_expenses(profile: dict) -> list[ValidationFlag]:
     total = exp.get("_total_monthly", 0)
     gross = profile.get("income", {}).get("_total_gross_monthly", 0)
 
+    # v5.1-09: Check each category has at least one non-zero item
+    for cat_name, items in exp.items():
+        if cat_name.startswith("_") or not isinstance(items, dict):
+            continue
+        non_internal = {k: v for k, v in items.items() if not k.startswith("_") and isinstance(v, (int, float))}
+        if non_internal and all(v == 0 for v in non_internal.values()):
+            flags.append(ValidationFlag(f"expenses.{cat_name}", Severity.INFO,
+                                        f"Expense category '{cat_name}' has all zero items.",
+                                        "Fill in estimates or remove the category."))
+
     if total <= 0:
         flags.append(ValidationFlag("expenses", Severity.WARNING,
                                     "Total monthly expenses are zero — likely incomplete.",
@@ -188,7 +198,11 @@ def _check_debts(profile: dict, assumptions: dict) -> list[ValidationFlag]:
                                         "Debt balance cannot be negative.",
                                         "Enter the outstanding balance as a positive number."))
 
-        if rate > 0.50:
+        if rate > 1.0:
+            flags.append(ValidationFlag(f"{prefix}.interest_rate", Severity.ERROR,
+                                        f"Interest rate {rate} appears to be a percentage, not a decimal.",
+                                        "Use decimal format: e.g. 0.05 for 5%, not 5."))
+        elif rate > 0.50:
             flags.append(ValidationFlag(f"{prefix}.interest_rate", Severity.WARNING,
                                         f"Interest rate {rate*100:.1f}% is extremely high.",
                                         "Verify this is an annual rate expressed as a decimal (e.g. 0.20 for 20%)."))
@@ -250,6 +264,53 @@ def _check_savings(profile: dict, assumptions: dict) -> list[ValidationFlag]:
                                     "No personal pension contribution — only employer match.",
                                     "Consider contributing at least enough to maximise employer matching."))
 
+    # v5.1-09: Pension contributions vs annual allowance
+    primary_gross = profile.get("income", {}).get("primary_gross_annual", 0)
+    if primary_gross > 0:
+        total_pension = primary_gross * (personal_pct + employer_pct)
+        aa_cfg = assumptions.get("pension_annual_allowance", {})
+        annual_allowance = aa_cfg.get("standard", 60000)
+        earnings_cap = primary_gross  # 100% of earnings
+        effective_limit = min(annual_allowance, earnings_cap)
+        if total_pension > effective_limit:
+            flags.append(ValidationFlag("savings.pension_contributions", Severity.WARNING,
+                                        f"Total pension contributions ({total_pension:,.0f}) exceed the annual allowance ({effective_limit:,.0f}).",
+                                        "Excess contributions incur a tax charge. Review pension contribution levels."))
+        elif total_pension > effective_limit * 0.90:
+            flags.append(ValidationFlag("savings.pension_contributions", Severity.INFO,
+                                        f"Pension contributions ({total_pension:,.0f}) are approaching the annual allowance ({effective_limit:,.0f}).",
+                                        "Monitor contributions to avoid exceeding the allowance."))
+
+    # v5.1-09: LISA eligibility checks
+    personal = profile.get("personal", {})
+    age = personal.get("age", 0)
+    lisa_balance = sav.get("lisa_balance", 0)
+    lisa_contributions = sav.get("lisa_contributions_this_year", 0)
+    lisa_cfg = assumptions.get("lisa", {})
+
+    if lisa_balance > 0 or lisa_contributions > 0:
+        lisa_age_limit = lisa_cfg.get("age_limit", 40)
+        if age >= lisa_age_limit:
+            flags.append(ValidationFlag("savings.lisa", Severity.WARNING,
+                                        f"LISA holder is {age} — must open before age {lisa_age_limit}. No new contributions allowed after 50.",
+                                        "Verify LISA was opened before the age limit. Contributions stop at 50."))
+
+        lisa_annual_limit = lisa_cfg.get("annual_limit", 4000)
+        if lisa_contributions > lisa_annual_limit:
+            flags.append(ValidationFlag("savings.lisa_contributions_this_year", Severity.ERROR,
+                                        f"LISA contributions ({lisa_contributions:,.0f}) exceed the annual limit ({lisa_annual_limit:,.0f}).",
+                                        "Excess contributions incur a 25% withdrawal penalty."))
+
+    # LISA property price check
+    mortgage = profile.get("mortgage", {})
+    target_property = mortgage.get("target_property_value", 0)
+    if lisa_balance > 0 and target_property > 0:
+        lisa_property_limit = lisa_cfg.get("property_price_limit", 450000)
+        if target_property > lisa_property_limit:
+            flags.append(ValidationFlag("savings.lisa_property", Severity.WARNING,
+                                        f"Target property ({target_property:,.0f}) exceeds LISA limit ({lisa_property_limit:,.0f}).",
+                                        "LISA bonus cannot be used for properties above this threshold."))
+
     return flags
 
 
@@ -310,6 +371,15 @@ def _check_cross_field_consistency(profile: dict, assumptions: dict) -> list[Val
     exp = profile.get("expenses", {})
     debts = profile.get("debts", [])
     sav = profile.get("savings", {})
+
+    # v5.1-09: Partner consistency
+    partner = profile.get("partner", {})
+    if partner:
+        partner_salary = partner.get("gross_salary", 0)
+        if partner_salary <= 0:
+            flags.append(ValidationFlag("partner.gross_salary", Severity.WARNING,
+                                        "Partner section exists but gross_salary is zero or missing.",
+                                        "Add partner's gross salary for accurate household analysis."))
 
     gross_monthly = inc.get("_total_gross_monthly", 0)
     if gross_monthly <= 0:
