@@ -113,6 +113,8 @@ class DebtConfig(BaseModel):
     ideal_emergency_fund_months: int = Field(ge=1, le=24)
     high_interest_threshold: float = Field(ge=0.0, le=1.0)
     moderate_interest_threshold: float = Field(ge=0.0, le=1.0)
+    credit_utilisation_warning_pct: float = Field(default=0.30, ge=0.0, le=1.0)
+    credit_utilisation_high_pct: float = Field(default=0.50, ge=0.0, le=1.0)
 
 
 class StudentLoanPlan(BaseModel):

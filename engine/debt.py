@@ -25,6 +25,8 @@ def analyse_debt(profile: ProfileDict, assumptions: AssumptionsDict) -> DebtResu
     - Recommended extra payment allocation
     - Debt-free date projection
     - T1-5: Student loan write-off intelligence
+    - v5.2-03: Credit cards paid in full are tracked separately as
+      cash-flow tools (not debt) and reported in `credit_card_tracking`.
     """
     debts = profile.get("debts", [])
     inc = profile.get("income", {})
@@ -41,10 +43,16 @@ def analyse_debt(profile: ProfileDict, assumptions: AssumptionsDict) -> DebtResu
         return _empty_result()
 
     # ------------------------------------------------------------------
-    # 1. Per-debt analysis
+    # 1. Split paid-in-full credit cards from genuine debts
+    # ------------------------------------------------------------------
+    full_pay_cards = [d for d in debts if _is_full_pay_card(d)]
+    real_debts = [d for d in debts if not _is_full_pay_card(d)]
+
+    # ------------------------------------------------------------------
+    # 2. Per-debt analysis (revolving / instalment / student)
     # ------------------------------------------------------------------
     analyses = []
-    for d in debts:
+    for d in real_debts:
         dtype = d.get("type", "unknown")
         if dtype in ("student_loan", "student_loan_postgrad"):
             a = _analyse_student_loan(d, dtype, primary_gross, age, sl_cfg, high_thresh, mod_thresh)
@@ -53,7 +61,7 @@ def analyse_debt(profile: ProfileDict, assumptions: AssumptionsDict) -> DebtResu
         analyses.append(a)
 
     # ------------------------------------------------------------------
-    # 2. Avalanche ordering (highest rate first)
+    # 3. Avalanche ordering (highest rate first)
     # ------------------------------------------------------------------
     avalanche_order = sorted(analyses, key=lambda x: x["interest_rate"], reverse=True)
     for rank, a in enumerate(avalanche_order, 1):
@@ -67,7 +75,7 @@ def analyse_debt(profile: ProfileDict, assumptions: AssumptionsDict) -> DebtResu
                 a2["snowball_priority"] = rank
 
     # ------------------------------------------------------------------
-    # 3. Aggregate metrics
+    # 4. Aggregate metrics
     # ------------------------------------------------------------------
     total_balance = sum(a["balance"] for a in analyses)
     total_min_monthly = sum(a["minimum_payment_monthly"] for a in analyses)
@@ -84,18 +92,22 @@ def analyse_debt(profile: ProfileDict, assumptions: AssumptionsDict) -> DebtResu
     max_months = max((a["months_to_payoff"] for a in analyses), default=0)
 
     # ------------------------------------------------------------------
-    # 4. Classify urgency
+    # 5. Classify urgency
     # ------------------------------------------------------------------
     high_interest_debts = [a for a in analyses if a["risk_tier"] == "high"]
-    [a for a in analyses if a["risk_tier"] == "moderate"]
 
     # ------------------------------------------------------------------
-    # 5. Extra payment simulation (excludes student loans)
+    # 6. Extra payment simulation (excludes student loans and full-pay cards)
     # ------------------------------------------------------------------
-    non_sl_debts = [d for d in debts if d.get("type", "") not in ("student_loan", "student_loan_postgrad")]
+    non_sl_debts = [d for d in real_debts if d.get("type", "") not in ("student_loan", "student_loan_postgrad")]
     debt_sim_cfg = assumptions.get("debt_simulation", {})
     extra_amounts = debt_sim_cfg.get("extra_payment_scenarios", [100, 200, 500])
     extra_scenarios = _simulate_extra_payments(non_sl_debts, extra_amounts)
+
+    # ------------------------------------------------------------------
+    # 7. Credit card tracking (cash-flow tools, not debts)
+    # ------------------------------------------------------------------
+    cc_tracking = _build_credit_card_tracking(full_pay_cards, debt_cfg)
 
     return {
         "debts": analyses,
@@ -108,13 +120,63 @@ def analyse_debt(profile: ProfileDict, assumptions: AssumptionsDict) -> DebtResu
             "longest_payoff_months": max_months,
             "high_interest_debt_count": len(high_interest_debts),
             "high_interest_total_balance": round(
-                sum(d["balance"] for d in high_interest_debts), 2
+                sum(d["balance"] for d in high_interest_debts), 2,
             ),
+            "full_pay_card_count": len(full_pay_cards),
         },
         "recommended_strategy": "avalanche",
         "avalanche_order": [a["name"] for a in avalanche_order],
         "extra_payment_scenarios": extra_scenarios,
+        "credit_card_tracking": cc_tracking,
     }
+
+
+def _is_full_pay_card(debt: dict) -> bool:
+    """True if the debt is a credit card declared as paid in full each month."""
+    return (
+        debt.get("type") == "credit_card"
+        and debt.get("payment_behaviour", "minimum") == "full"
+    )
+
+
+def _build_credit_card_tracking(
+    cards: list[dict], debt_cfg: dict,
+) -> list[dict]:
+    """Per-card cash-flow / utilisation report for paid-in-full credit cards.
+
+    These cards are NOT debt (no interest, no payoff timeline) but matter
+    for credit-score signals (utilisation), so we track them separately.
+    """
+    util_warn_pct = debt_cfg.get("credit_utilisation_warning_pct", 0.30)
+    util_high_pct = debt_cfg.get("credit_utilisation_high_pct", 0.50)
+
+    out: list[dict] = []
+    for c in cards:
+        name = c.get("name", "Unnamed card")
+        limit = c.get("credit_limit", 0) or 0
+        current = c.get("current_balance", c.get("balance", 0)) or 0
+        statement = c.get("statement_balance", current) or 0
+        spend = c.get("monthly_spend", 0) or 0
+        utilisation = (current / limit) if limit > 0 else 0.0
+
+        if utilisation >= util_high_pct:
+            tier = "high"
+        elif utilisation >= util_warn_pct:
+            tier = "moderate"
+        else:
+            tier = "low"
+
+        out.append({
+            "name": name,
+            "credit_limit": round(limit, 2),
+            "current_balance": round(current, 2),
+            "statement_balance": round(statement, 2),
+            "monthly_spend": round(spend, 2),
+            "utilisation_pct": round(utilisation * 100, 1),
+            "utilisation_tier": tier,
+            "treated_as": "cash_flow_tool",
+        })
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -470,8 +532,10 @@ def _empty_result() -> dict:
             "longest_payoff_months": 0,
             "high_interest_debt_count": 0,
             "high_interest_total_balance": 0,
+            "full_pay_card_count": 0,
         },
         "recommended_strategy": "none",
         "avalanche_order": [],
         "extra_payment_scenarios": [],
+        "credit_card_tracking": [],
     }

@@ -193,13 +193,23 @@ def _normalise_profile(raw: dict) -> dict:
     profile["expenses"] = exp
 
     # --- Debts ---
+    # v5.2-03: paid-in-full credit cards are cash-flow tools, not debt.
+    # They contribute neither to total balance nor to minimum payments.
     debts = profile.get("debts", [])
-    total_debt_balance = sum(d.get("balance", 0) for d in debts)
-    total_min_payments = sum(d.get("minimum_payment_monthly", 0) for d in debts)
+    real_debts = [
+        d for d in debts
+        if not (
+            d.get("type") == "credit_card"
+            and d.get("payment_behaviour", "minimum") == "full"
+        )
+    ]
+    total_debt_balance = sum(d.get("balance", 0) for d in real_debts)
+    total_min_payments = sum(d.get("minimum_payment_monthly", 0) for d in real_debts)
     profile["_debt_summary"] = {
         "total_balance": total_debt_balance,
         "total_minimum_monthly": total_min_payments,
-        "count": len(debts),
+        "count": len(real_debts),
+        "full_pay_card_count": len(debts) - len(real_debts),
     }
 
     # --- Savings / Net Worth ---
@@ -216,7 +226,14 @@ def _normalise_profile(raw: dict) -> dict:
     sav["_total_assets"] = liquid + illiquid
     profile["savings"] = sav
 
-    profile["_net_worth"] = sav["_total_assets"] - total_debt_balance
+    # Net worth still subtracts paid-in-full card balances: the cash to clear
+    # them sits in liquid savings but is already committed to next statement.
+    full_pay_committed = sum(
+        (d.get("current_balance") or d.get("balance", 0))
+        for d in debts
+        if d.get("type") == "credit_card" and d.get("payment_behaviour", "minimum") == "full"
+    )
+    profile["_net_worth"] = sav["_total_assets"] - total_debt_balance - full_pay_committed
 
     # --- Goals ---
     goals = profile.get("goals", [])

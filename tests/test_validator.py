@@ -125,3 +125,80 @@ class TestValidationHardening:
         # 150000 * 0.45 = 67500 > 60000 annual allowance
         aa_flags = [f for f in flags if "pension_contributions" in f.field]
         assert len(aa_flags) > 0
+
+
+class TestCreditCardUtilisation:
+    """v5.2-03: credit card utilisation warnings."""
+
+    def _profile_with_card(self, current_balance: float, credit_limit: float, behaviour: str = "minimum") -> dict:
+        return {
+            "personal": {"age": 30},
+            "income": {"primary_gross_annual": 50000},
+            "expenses": {"housing": {"rent_monthly": 1000}},
+            "savings": {"emergency_fund": 5000},
+            "debts": [{
+                "name": "Test Card",
+                "type": "credit_card",
+                "balance": current_balance,
+                "interest_rate": 0.219,
+                "minimum_payment_monthly": max(25, current_balance * 0.03),
+                "current_balance": current_balance,
+                "credit_limit": credit_limit,
+                "payment_behaviour": behaviour,
+            }],
+        }
+
+    def test_low_utilisation_no_flag(self, assumptions):
+        profile = self._profile_with_card(current_balance=500, credit_limit=5000)
+        flags = validate_profile(profile, assumptions)
+        util_flags = [f for f in flags if "credit_utilisation" in f.field]
+        assert len(util_flags) == 0  # 10% utilisation
+
+    def test_moderate_utilisation_info_flag(self, assumptions):
+        profile = self._profile_with_card(current_balance=2000, credit_limit=5000)
+        flags = validate_profile(profile, assumptions)
+        util_flags = [f for f in flags if "credit_utilisation" in f.field]
+        assert len(util_flags) == 1
+        assert util_flags[0].severity == Severity.INFO  # 40% utilisation
+
+    def test_high_utilisation_warning(self, assumptions):
+        profile = self._profile_with_card(current_balance=4000, credit_limit=5000)
+        flags = validate_profile(profile, assumptions)
+        util_flags = [f for f in flags if "credit_utilisation" in f.field]
+        assert len(util_flags) == 1
+        assert util_flags[0].severity == Severity.WARNING  # 80% utilisation
+
+    def test_no_credit_limit_no_flag(self, assumptions):
+        # Backward compat: card without credit_limit set
+        profile = {
+            "personal": {"age": 30},
+            "income": {"primary_gross_annual": 50000},
+            "expenses": {"housing": {"rent_monthly": 1000}},
+            "savings": {"emergency_fund": 5000},
+            "debts": [{
+                "name": "Old Card",
+                "type": "credit_card",
+                "balance": 1000,
+                "interest_rate": 0.219,
+                "minimum_payment_monthly": 30,
+            }],
+        }
+        flags = validate_profile(profile, assumptions)
+        util_flags = [f for f in flags if "credit_utilisation" in f.field]
+        assert len(util_flags) == 0
+
+    def test_full_pay_card_high_rate_no_info_flag(self, assumptions):
+        """A paid-in-full card with a high APR shouldn't get the high-interest warning."""
+        profile = self._profile_with_card(
+            current_balance=300, credit_limit=10000, behaviour="full",
+        )
+        # Override interest rate to a high APR
+        profile["debts"][0]["interest_rate"] = 0.346
+        profile["debts"][0]["minimum_payment_monthly"] = 0
+        flags = validate_profile(profile, assumptions)
+        # Should NOT have a high-interest INFO flag for this card
+        rate_flags = [
+            f for f in flags
+            if "interest_rate" in f.field and "High-interest" in f.message
+        ]
+        assert len(rate_flags) == 0

@@ -56,6 +56,7 @@ class DebtResult(TypedDict, total=False):
     recommended_strategy: str
     avalanche_order: list[str]
     extra_payment_scenarios: list[dict[str, Any]]
+    credit_card_tracking: list[dict[str, Any]]
 
 
 # ---------------------------------------------------------------------------

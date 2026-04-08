@@ -99,6 +99,8 @@ debt:
   ideal_emergency_fund_months: 6       # Source: Financial planning industry standard
   high_interest_threshold: 0.10        # Source: Industry convention for "high interest"
   moderate_interest_threshold: 0.05    # Source: Industry convention
+  credit_utilisation_warning_pct: 0.30 # Source: Experian/Equifax — utilisation above 30% lowers credit score
+  credit_utilisation_high_pct: 0.50    # Source: FICO — utilisation above 50% materially impacts score
 
 student_loans:
   plan_2:                              # Source: SLC 2024/25 (updated April)

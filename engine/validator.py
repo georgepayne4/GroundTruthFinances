@@ -187,11 +187,20 @@ def _check_debts(profile: dict, assumptions: dict) -> list[ValidationFlag]:
     debts = profile.get("debts", [])
     high_rate_thresh = assumptions.get("debt", {}).get("high_interest_threshold", 0.10)
 
+    debt_cfg = assumptions.get("debt", {})
+    util_warn = debt_cfg.get("credit_utilisation_warning_pct", 0.30)
+    util_high = debt_cfg.get("credit_utilisation_high_pct", 0.50)
+
     for i, d in enumerate(debts):
         prefix = f"debts[{i}]"
         bal = d.get("balance", 0)
         rate = d.get("interest_rate", 0)
         minpay = d.get("minimum_payment_monthly", 0)
+        dtype = d.get("type")
+        is_full_pay_card = (
+            dtype == "credit_card"
+            and d.get("payment_behaviour", "minimum") == "full"
+        )
 
         if bal < 0:
             flags.append(ValidationFlag(f"{prefix}.balance", Severity.ERROR,
@@ -206,23 +215,42 @@ def _check_debts(profile: dict, assumptions: dict) -> list[ValidationFlag]:
             flags.append(ValidationFlag(f"{prefix}.interest_rate", Severity.WARNING,
                                         f"Interest rate {rate*100:.1f}% is extremely high.",
                                         "Verify this is an annual rate expressed as a decimal (e.g. 0.20 for 20%)."))
-        elif rate >= high_rate_thresh:
+        elif rate >= high_rate_thresh and not is_full_pay_card:
             flags.append(ValidationFlag(f"{prefix}.interest_rate", Severity.INFO,
                                         f"High-interest debt at {rate*100:.1f}%.",
                                         "Prioritise paying this off before investing."))
 
-        if bal > 0 and minpay <= 0:
+        if bal > 0 and minpay <= 0 and not is_full_pay_card:
             flags.append(ValidationFlag(f"{prefix}.minimum_payment_monthly", Severity.WARNING,
                                         "Debt has a balance but no minimum payment specified.",
                                         "Add the required minimum monthly payment."))
 
-        # Check if minimum payment even covers monthly interest
-        if bal > 0 and rate > 0 and minpay > 0:
+        # Check if minimum payment even covers monthly interest (revolvers only)
+        if bal > 0 and rate > 0 and minpay > 0 and not is_full_pay_card:
             monthly_interest = bal * rate / 12
             if minpay < monthly_interest:
                 flags.append(ValidationFlag(f"{prefix}.minimum_payment_monthly", Severity.WARNING,
                                             f"Minimum payment ({minpay:.0f}) does not cover monthly interest ({monthly_interest:.0f}).",
                                             "This debt will grow. Increase payments or seek advice."))
+
+        # v5.2-03: Credit card utilisation check
+        if dtype == "credit_card":
+            limit = d.get("credit_limit", 0) or 0
+            current = d.get("current_balance", bal) or 0
+            if limit > 0 and current > 0:
+                utilisation = current / limit
+                if utilisation >= util_high:
+                    flags.append(ValidationFlag(
+                        f"{prefix}.credit_utilisation", Severity.WARNING,
+                        f"Credit utilisation is {utilisation*100:.0f}% — high utilisation hurts your credit score.",
+                        f"Reduce balance below {util_warn*100:.0f}% of the limit ({limit*util_warn:,.0f}) before the next statement.",
+                    ))
+                elif utilisation >= util_warn:
+                    flags.append(ValidationFlag(
+                        f"{prefix}.credit_utilisation", Severity.INFO,
+                        f"Credit utilisation is {utilisation*100:.0f}% — above the {util_warn*100:.0f}% credit-score threshold.",
+                        f"Aim to keep balance below {limit*util_warn:,.0f} when statements close.",
+                    ))
 
     return flags
 
