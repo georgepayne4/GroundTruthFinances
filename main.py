@@ -17,6 +17,9 @@ Usage:
     python main.py --assumptions path/to/assumptions.yaml
     python main.py --import-csv path/to/statement.csv # preview bank CSV import
     python main.py --bank-csv path/to/statement.csv   # merge bank CSV into profile, run full pipeline
+    python main.py --history                          # list recent runs from the history DB
+    python main.py --diff                             # diff the two most recent runs
+    python main.py --diff 3 7                         # diff specific run ids
 """
 
 from __future__ import annotations
@@ -33,6 +36,13 @@ from engine.cashflow import analyse_cashflow
 from engine.debt import analyse_debt
 from engine.estate import analyse_estate
 from engine.goals import analyse_goals
+from engine.history import (
+    HistoryError,
+    diff_runs,
+    latest_two_runs,
+    list_runs,
+    record_run,
+)
 from engine.import_csv import import_bank_csv
 from engine.insights import generate_insights
 from engine.insurance import assess_insurance
@@ -72,6 +82,16 @@ def main() -> None:
         return
 
     project_root = Path(__file__).resolve().parent
+    history_db_path = args.history_db or project_root / "outputs" / "history.db"
+
+    # v5.2-05: history short-circuits — list past runs or diff two runs without
+    # touching the analysis pipeline.
+    if args.history:
+        _show_history(history_db_path, limit=args.history_limit, profile_name=args.history_profile)
+        return
+    if args.diff is not None:
+        _show_diff(history_db_path, args.diff, profile_name=args.history_profile)
+        return
 
     # ------------------------------------------------------------------
     # 1. Load inputs
@@ -379,6 +399,24 @@ def main() -> None:
     logger.info("Report saved to %s", saved_path)
     print(f"\nReport saved to: {saved_path}")
 
+    # v5.2-05: persist this run to the history DB unless suppressed
+    if not args.no_history:
+        try:
+            run_id = record_run(
+                report,
+                history_db_path,
+                profile=profile,
+                profile_path=profile_path,
+            )
+            print(f"Run recorded in history: id={run_id} (db: {history_db_path})")
+            previous = latest_two_runs(history_db_path, profile_name=name)
+            if previous and previous[0] != run_id and previous[1] == run_id:
+                diff = diff_runs(history_db_path, previous[0], previous[1])
+                _print_diff_summary(diff)
+        except HistoryError as e:
+            logger.warning("Could not record run history: %s", e)
+            print(f"Warning: history not recorded ({e})")
+
     # T3-1: Generate narrative report
     narrative_path = project_root / "outputs" / "report.md"
     narrative = generate_narrative(report)
@@ -388,6 +426,91 @@ def main() -> None:
     logger.info("Engine run complete — score: %s", scoring_result.get("overall_score", "N/A"))
     print(f"Narrative report: {narrative_path}")
     print("Done.")
+
+
+def _show_history(db_path: Path, limit: int, profile_name: str | None) -> None:
+    """List recent runs from the history DB to stdout."""
+    print(f"History DB: {db_path}")
+    print("=" * 60)
+    try:
+        runs = list_runs(db_path, limit=limit, profile_name=profile_name)
+    except HistoryError as e:
+        print(f"Error: {e}")
+        return
+    if not runs:
+        print("No runs recorded yet. Run the engine to create the first entry.")
+        return
+    header = f"{'ID':>4}  {'Timestamp':<25}  {'Profile':<20}  {'Score':>6}  {'Grade':<5}  {'Surplus/mo':>12}"
+    print(header)
+    print("-" * len(header))
+    for r in runs:
+        score = r.get("overall_score") or 0
+        surplus = r.get("surplus_monthly") or 0
+        ts = (r.get("timestamp") or "")[:25]
+        name = (r.get("profile_name") or "-")[:20]
+        grade = r.get("grade") or "-"
+        print(f"{r['id']:>4}  {ts:<25}  {name:<20}  {score:>6.0f}  {grade:<5}  {surplus:>12,.0f}")
+
+
+def _show_diff(db_path: Path, diff_args: list[int], profile_name: str | None) -> None:
+    """Render a structured diff between two runs to stdout."""
+    print(f"History DB: {db_path}")
+    print("=" * 60)
+    try:
+        if not diff_args:
+            pair = latest_two_runs(db_path, profile_name=profile_name)
+            if pair is None:
+                print("Need at least two recorded runs to diff.")
+                return
+            old_id, new_id = pair
+        elif len(diff_args) == 2:
+            old_id, new_id = diff_args
+        else:
+            print("Usage: --diff [OLD_ID NEW_ID]  (omit ids for the latest pair)")
+            return
+        diff = diff_runs(db_path, old_id, new_id)
+    except HistoryError as e:
+        print(f"Error: {e}")
+        return
+
+    print(f"From: run {diff['from']['id']} at {diff['from']['timestamp']}")
+    print(f"To:   run {diff['to']['id']} at {diff['to']['timestamp']}")
+    print()
+    _print_diff_summary(diff)
+    print()
+    print("Numeric changes:")
+    for field, vals in diff["numeric"].items():
+        old, new, delta = vals.get("old"), vals.get("new"), vals.get("delta")
+        pct = vals.get("delta_pct")
+        pct_str = f" ({pct:+.1f}%)" if pct is not None else ""
+        if delta is None:
+            print(f"  {field:<28} {old} -> {new}")
+        else:
+            print(f"  {field:<28} {old} -> {new}  delta {delta:+}{pct_str}")
+    cat_changes = [(f, v) for f, v in diff["categorical"].items() if v.get("changed")]
+    if cat_changes:
+        print("\nCategorical changes:")
+        for field, vals in cat_changes:
+            print(f"  {field:<28} {vals['old']} -> {vals['new']}")
+
+
+def _print_diff_summary(diff: dict) -> None:
+    """One-line headline diff summary used by --diff and post-run reporting."""
+    summary = diff.get("summary", {})
+    direction = summary.get("direction", "unchanged")
+    score_delta = summary.get("score_delta")
+    parts = [f"Direction: {direction}"]
+    if score_delta is not None:
+        parts.append(f"score delta {score_delta:+}")
+    if summary.get("surplus_delta") is not None:
+        parts.append(f"surplus delta {summary['surplus_delta']:+,.0f}")
+    if summary.get("net_worth_delta") is not None:
+        parts.append(f"net worth delta {summary['net_worth_delta']:+,.0f}")
+    if summary.get("debt_delta") is not None:
+        parts.append(f"debt delta {summary['debt_delta']:+,.0f}")
+    if summary.get("grade_changed"):
+        parts.append("grade changed")
+    print("  " + " | ".join(parts))
 
 
 def _run_csv_preview(csv_path: Path) -> None:
@@ -444,6 +567,43 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         default=False,
         help="When merging bank CSV, replace profile expense values instead of taking the maximum",
+    )
+    parser.add_argument(
+        "--history",
+        action="store_true",
+        default=False,
+        help="List recent runs from the history database and exit",
+    )
+    parser.add_argument(
+        "--history-limit",
+        type=int,
+        default=10,
+        help="Maximum runs to show with --history (default: 10)",
+    )
+    parser.add_argument(
+        "--history-profile",
+        type=str,
+        default=None,
+        help="Filter --history and --diff by profile name",
+    )
+    parser.add_argument(
+        "--history-db",
+        type=Path,
+        default=None,
+        help="Path to the history SQLite DB (default: outputs/history.db)",
+    )
+    parser.add_argument(
+        "--diff",
+        nargs="*",
+        type=int,
+        default=None,
+        help="Diff two history runs by id (e.g. --diff 3 7); with no ids, diffs the latest pair",
+    )
+    parser.add_argument(
+        "--no-history",
+        action="store_true",
+        default=False,
+        help="Do not record this run in the history database",
     )
     parser.add_argument(
         "--verbose", "-v",
