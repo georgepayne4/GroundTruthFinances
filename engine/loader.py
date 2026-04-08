@@ -8,6 +8,7 @@ and provides accessor helpers used by every downstream module.
 
 from __future__ import annotations
 
+import copy
 import logging
 from pathlib import Path
 from typing import Any
@@ -43,6 +44,94 @@ def load_profile(path: str | Path) -> dict[str, Any]:
     profile = _normalise_profile(raw)
     logger.info("Profile loaded: %d sections", len([k for k in profile if not k.startswith("_")]))
     return profile
+
+
+def merge_bank_data(
+    profile: dict[str, Any],
+    bank_result: dict[str, Any],
+    override: bool = False,
+) -> dict[str, Any]:
+    """Merge bank-statement-derived data into a loaded profile (v5.2-02).
+
+    bank_result is the dict returned by import_bank_csv(), containing
+    ``expenses``, ``income_transactions``, ``recurring_transactions``,
+    and ``summary``.
+
+    Behaviour:
+    - Expense sub-categories: by default the bank value supplements the
+      profile value, taking the maximum (so manual entries are never
+      under-stated). With override=True the bank value replaces the
+      profile value entirely.
+    - Income: if the bank summary detected a salary credit and the
+      profile has no primary_gross_annual, infer it from the most recent
+      payroll transaction (12x).
+    - The merged profile is re-normalised so downstream totals are correct.
+    - A ``_bank_import`` block is attached to the profile capturing what
+      was merged, which fields were overridden, and the import summary.
+
+    Returns a new profile dict (the input is not mutated).
+    """
+    merged = copy.deepcopy(profile)
+    bank_expenses = bank_result.get("expenses", {}) or {}
+    overridden: list[str] = []
+    supplemented: list[str] = []
+
+    profile_expenses = merged.setdefault("expenses", {})
+    for category, sub_map in bank_expenses.items():
+        existing_cat = profile_expenses.get(category)
+        if not isinstance(existing_cat, dict):
+            existing_cat = {}
+            profile_expenses[category] = existing_cat
+        for sub_key, bank_value in sub_map.items():
+            existing_value = existing_cat.get(sub_key, 0) or 0
+            if override or existing_value == 0:
+                existing_cat[sub_key] = bank_value
+                overridden.append(f"{category}.{sub_key}")
+            else:
+                # Take the higher of manual entry and bank-derived figure
+                # so we never silently lower a user-stated commitment.
+                merged_value = max(existing_value, bank_value)
+                if merged_value != existing_value:
+                    existing_cat[sub_key] = merged_value
+                    supplemented.append(f"{category}.{sub_key}")
+
+    # Strip computed fields so re-normalisation produces fresh totals
+    for cat_data in profile_expenses.values():
+        if isinstance(cat_data, dict):
+            cat_data.pop("_category_monthly", None)
+    profile_expenses.pop("_total_monthly", None)
+    profile_expenses.pop("_total_annual", None)
+
+    # Income inference: only fill if user didn't provide a salary
+    income_inferred = None
+    income_block = merged.setdefault("income", {})
+    if not income_block.get("primary_gross_annual"):
+        income_txns = bank_result.get("income_transactions") or []
+        if income_txns:
+            latest = max(income_txns, key=lambda t: t["date"])
+            inferred_annual = round(latest["amount"] * 12, 2)
+            income_block["primary_gross_annual"] = inferred_annual
+            income_inferred = {
+                "source_description": latest["description"],
+                "monthly_credit": latest["amount"],
+                "annual_estimate": inferred_annual,
+            }
+
+    # Re-normalise so downstream modules see fresh totals
+    merged = _normalise_profile(merged)
+
+    merged["_bank_import"] = {
+        "summary": bank_result.get("summary", {}),
+        "expense_fields_overridden": overridden,
+        "expense_fields_supplemented": supplemented,
+        "income_inferred": income_inferred,
+        "recurring_transactions": bank_result.get("recurring_transactions", []),
+    }
+    logger.info(
+        "Merged bank data: %d field overrides, %d supplements, income_inferred=%s",
+        len(overridden), len(supplemented), bool(income_inferred),
+    )
+    return merged
 
 
 def load_assumptions(path: str | Path | None = None) -> dict[str, Any]:

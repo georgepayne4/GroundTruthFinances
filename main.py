@@ -16,6 +16,7 @@ Usage:
     python main.py --profile path/to/profile.yaml     # custom profile
     python main.py --assumptions path/to/assumptions.yaml
     python main.py --import-csv path/to/statement.csv # preview bank CSV import
+    python main.py --bank-csv path/to/statement.csv   # merge bank CSV into profile, run full pipeline
 """
 
 from __future__ import annotations
@@ -37,7 +38,7 @@ from engine.insights import generate_insights
 from engine.insurance import assess_insurance
 from engine.investments import analyse_investments
 from engine.life_events import simulate_life_events
-from engine.loader import load_assumptions, load_profile
+from engine.loader import load_assumptions, load_profile, merge_bank_data
 from engine.mortgage import analyse_mortgage
 from engine.narrative import generate_narrative
 from engine.report import assemble_report, save_report
@@ -83,6 +84,26 @@ def main() -> None:
 
     profile = load_profile(profile_path)
     assumptions = load_assumptions(assumptions_path)
+
+    # v5.2-02: optional bank CSV merge — runs before any analysis so the
+    # whole pipeline sees the bank-derived expenses and inferred income.
+    if args.bank_csv:
+        print(f"Merging bank CSV:    {args.bank_csv}")
+        bank_result = import_bank_csv(args.bank_csv)
+        profile = merge_bank_data(profile, bank_result, override=args.bank_csv_override)
+        bi = profile.get("_bank_import", {})
+        bsum = bi.get("summary", {})
+        print(
+            f"  Bank merge:         "
+            f"{len(bi.get('expense_fields_overridden', []))} overridden, "
+            f"{len(bi.get('expense_fields_supplemented', []))} supplemented, "
+            f"avg confidence {bsum.get('average_confidence', 0):.2f}",
+        )
+        if bi.get("income_inferred"):
+            inf = bi["income_inferred"]
+            print(f"  Income inferred:    £{inf['annual_estimate']:,.0f}/yr from '{inf['source_description']}'")
+        if bi.get("recurring_transactions"):
+            print(f"  Recurring detected: {len(bi['recurring_transactions'])} groups")
 
     name = profile.get("personal", {}).get("name", "Unknown")
     print(f"\nAnalysing financial profile for: {name}")
@@ -411,6 +432,18 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         help="Parse a bank statement CSV and print a profile-compatible expenses preview",
+    )
+    parser.add_argument(
+        "--bank-csv",
+        type=Path,
+        default=None,
+        help="Bank statement CSV to merge into the profile before running the full pipeline",
+    )
+    parser.add_argument(
+        "--bank-csv-override",
+        action="store_true",
+        default=False,
+        help="When merging bank CSV, replace profile expense values instead of taking the maximum",
     )
     parser.add_argument(
         "--verbose", "-v",

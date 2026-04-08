@@ -12,14 +12,19 @@ from engine.import_csv import (
     ImportCsvError,
     Transaction,
     _detect_format,
+    _normalise_merchant,
     _parse_amount,
     _parse_date,
+    _score_match,
     aggregate_to_expenses,
     categorise_transactions,
+    detect_income_transactions,
+    detect_recurring_transactions,
     import_bank_csv,
     load_category_rules,
     parse_csv,
 )
+from engine.loader import merge_bank_data
 
 # ---------------------------------------------------------------------------
 # Sample CSV writers — keep tests self-contained, no fixture files
@@ -295,6 +300,8 @@ class TestEndToEnd:
         assert result["summary"]["inflow_count"] == 1
         assert result["summary"]["outflow_count"] == 5
         assert result["summary"]["bank"] == "monzo"
+        assert "average_confidence" in result["summary"]
+        assert result["summary"]["average_confidence"] > 0
 
         # Tesco should land in living.groceries_monthly
         expenses = result["expenses"]
@@ -310,3 +317,266 @@ class TestEndToEnd:
 
         # Netflix → subscriptions
         assert expenses["living"]["subscriptions_monthly"] >= 12.99
+
+        # v5.2-02: detection results
+        assert "income_transactions" in result
+        assert len(result["income_transactions"]) == 1
+        assert "SALARY" in result["income_transactions"][0]["description"]
+        assert "recurring_transactions" in result
+
+
+# ---------------------------------------------------------------------------
+# v5.2-02: Confidence scoring and detection helpers
+# ---------------------------------------------------------------------------
+
+class TestConfidenceScoring:
+    def test_exact_match_high_confidence(self):
+        rules = {"living": {"subscriptions_monthly": ["netflix"]}}
+        txns = [Transaction(date(2026, 3, 1), "Netflix", -12.99, "monzo")]
+        categorise_transactions(txns, rules)
+        assert txns[0].confidence == 1.0
+
+    def test_prefix_match_confidence(self):
+        rules = {"living": {"groceries_monthly": ["sainsbury"]}}
+        txns = [Transaction(date(2026, 3, 1), "Sainsburys London", -45.20, "monzo")]
+        categorise_transactions(txns, rules)
+        assert txns[0].confidence == 0.9
+
+    def test_word_boundary_match_confidence(self):
+        rules = {"living": {"groceries_monthly": ["tesco"]}}
+        txns = [Transaction(date(2026, 3, 1), "Card payment Tesco Watford", -45.20, "monzo")]
+        categorise_transactions(txns, rules)
+        assert txns[0].confidence == 0.8
+
+    def test_short_keyword_lower_confidence(self):
+        rules = {"transport": {"public_transport_monthly": ["tfl"]}}
+        txns = [Transaction(date(2026, 3, 1), "Card payment TfL Charge", -5.00, "monzo")]
+        categorise_transactions(txns, rules)
+        # 'tfl' is len 3 and not at the start → 0.5
+        assert txns[0].confidence == 0.5
+
+    def test_score_match_helper(self):
+        assert _score_match("netflix", "netflix") == 1.0
+        assert _score_match("Netflix", "netflix") == 1.0
+        assert _score_match("Sainsburys", "sainsbury") == 0.9
+        assert _score_match("Card Payment Tesco", "tesco") == 0.8
+        assert _score_match("XYZ TfL XYZ", "tfl") == 0.5
+
+    def test_uncategorised_has_no_confidence(self):
+        rules = {"living": {"groceries_monthly": ["tesco"]}}
+        txns = [Transaction(date(2026, 3, 1), "Random merchant", -10.00, "monzo")]
+        categorise_transactions(txns, rules)
+        assert txns[0].confidence is None
+
+
+class TestIncomeDetection:
+    def test_detects_salary_credit(self):
+        txns = [
+            Transaction(date(2026, 3, 5), "SALARY ACME LTD", 2500.00, "monzo"),
+            Transaction(date(2026, 3, 1), "Tesco", -45.20, "monzo"),
+        ]
+        income = detect_income_transactions(txns)
+        assert len(income) == 1
+        assert income[0].description == "SALARY ACME LTD"
+
+    def test_detects_payroll_keyword(self):
+        txns = [Transaction(date(2026, 3, 5), "EMPLOYER PAYROLL", 3000.00, "monzo")]
+        income = detect_income_transactions(txns)
+        assert len(income) == 1
+
+    def test_ignores_small_credits(self):
+        txns = [Transaction(date(2026, 3, 5), "Salary refund", 50.00, "monzo")]
+        income = detect_income_transactions(txns)
+        assert income == []
+
+    def test_ignores_outflows(self):
+        txns = [Transaction(date(2026, 3, 5), "SALARY DEDUCTION", -500.00, "monzo")]
+        income = detect_income_transactions(txns)
+        assert income == []
+
+    def test_ignores_non_salary_credits(self):
+        txns = [Transaction(date(2026, 3, 5), "Birthday gift transfer", 1000.00, "monzo")]
+        income = detect_income_transactions(txns)
+        assert income == []
+
+    def test_min_amount_threshold(self):
+        txns = [Transaction(date(2026, 3, 5), "SALARY part-time", 400.00, "monzo")]
+        # Default threshold is 500
+        assert detect_income_transactions(txns) == []
+        # Lower threshold catches it
+        assert len(detect_income_transactions(txns, min_amount=300)) == 1
+
+
+class TestRecurringDetection:
+    def test_detects_monthly_subscription(self):
+        txns = [
+            Transaction(date(2026, 1, 15), "Netflix", -12.99, "monzo"),
+            Transaction(date(2026, 2, 15), "Netflix", -12.99, "monzo"),
+            Transaction(date(2026, 3, 15), "Netflix", -12.99, "monzo"),
+        ]
+        recurring = detect_recurring_transactions(txns)
+        assert len(recurring) == 1
+        assert recurring[0]["occurrences"] == 3
+        assert recurring[0]["mean_amount"] == 12.99
+
+    def test_ignores_single_occurrence(self):
+        txns = [Transaction(date(2026, 3, 15), "Netflix", -12.99, "monzo")]
+        recurring = detect_recurring_transactions(txns)
+        assert recurring == []
+
+    def test_filters_high_variance_amounts(self):
+        # Amounts vary too much to be a fixed subscription
+        txns = [
+            Transaction(date(2026, 1, 15), "Tesco", -45.00, "monzo"),
+            Transaction(date(2026, 2, 15), "Tesco", -90.00, "monzo"),
+            Transaction(date(2026, 3, 15), "Tesco", -20.00, "monzo"),
+        ]
+        recurring = detect_recurring_transactions(txns)
+        assert recurring == []  # variance > 10% of mean
+
+    def test_normalises_descriptions(self):
+        # Same merchant, slightly different descriptions (date suffixes)
+        txns = [
+            Transaction(date(2026, 1, 15), "SPOTIFY UK 0123 LONDON", -9.99, "monzo"),
+            Transaction(date(2026, 2, 15), "SPOTIFY UK 4567 LONDON", -9.99, "monzo"),
+        ]
+        recurring = detect_recurring_transactions(txns)
+        assert len(recurring) == 1
+        assert recurring[0]["occurrences"] == 2
+
+    def test_ignores_inflows(self):
+        txns = [
+            Transaction(date(2026, 1, 5), "Salary", 2500.00, "monzo"),
+            Transaction(date(2026, 2, 5), "Salary", 2500.00, "monzo"),
+        ]
+        # Salary is inflow → not in recurring outflows
+        recurring = detect_recurring_transactions(txns)
+        assert recurring == []
+
+    def test_normalise_merchant_strips_noise(self):
+        assert _normalise_merchant("TESCO STORES 1234 LONDON 03MAR") == \
+               _normalise_merchant("TESCO STORES 5678 LONDON 17MAR")
+
+
+# ---------------------------------------------------------------------------
+# v5.2-02: merge_bank_data
+# ---------------------------------------------------------------------------
+
+class TestMergeBankData:
+    def _base_profile(self) -> dict:
+        return {
+            "personal": {"name": "Test", "age": 30, "retirement_age": 67,
+                         "dependents": 0, "risk_profile": "moderate",
+                         "employment_type": "employed"},
+            "income": {"primary_gross_annual": 50000},
+            "expenses": {
+                "housing": {"rent_monthly": 1200},
+                "living": {"groceries_monthly": 250},
+            },
+            "savings": {
+                "emergency_fund": 5000,
+                "pension_balance": 10000,
+                "pension_personal_contribution_pct": 0.05,
+                "pension_employer_contribution_pct": 0.03,
+            },
+            "debts": [],
+            "goals": [],
+        }
+
+    def _bank_result(self, expenses=None, income_txns=None, recurring=None):
+        return {
+            "expenses": expenses or {},
+            "income_transactions": income_txns or [],
+            "recurring_transactions": recurring or [],
+            "summary": {"average_confidence": 0.85, "bank": "monzo"},
+        }
+
+    def test_merge_takes_max_by_default(self):
+        from engine.loader import _normalise_profile
+        profile = _normalise_profile(self._base_profile())
+        bank = self._bank_result(expenses={"living": {"groceries_monthly": 400}})
+        merged = merge_bank_data(profile, bank)
+        # Bank value (400) > profile value (250) → bank wins
+        assert merged["expenses"]["living"]["groceries_monthly"] == 400
+
+    def test_merge_keeps_higher_profile_value(self):
+        from engine.loader import _normalise_profile
+        profile = _normalise_profile(self._base_profile())
+        bank = self._bank_result(expenses={"living": {"groceries_monthly": 100}})
+        merged = merge_bank_data(profile, bank)
+        # Profile value (250) > bank value (100) → profile wins
+        assert merged["expenses"]["living"]["groceries_monthly"] == 250
+
+    def test_merge_override_replaces_value(self):
+        from engine.loader import _normalise_profile
+        profile = _normalise_profile(self._base_profile())
+        bank = self._bank_result(expenses={"living": {"groceries_monthly": 100}})
+        merged = merge_bank_data(profile, bank, override=True)
+        assert merged["expenses"]["living"]["groceries_monthly"] == 100
+
+    def test_merge_adds_new_subcategory(self):
+        from engine.loader import _normalise_profile
+        profile = _normalise_profile(self._base_profile())
+        bank = self._bank_result(expenses={"living": {"subscriptions_monthly": 25}})
+        merged = merge_bank_data(profile, bank)
+        assert merged["expenses"]["living"]["subscriptions_monthly"] == 25
+
+    def test_merge_adds_new_category(self):
+        from engine.loader import _normalise_profile
+        profile = _normalise_profile(self._base_profile())
+        bank = self._bank_result(expenses={"transport": {"fuel_monthly": 80}})
+        merged = merge_bank_data(profile, bank)
+        assert merged["expenses"]["transport"]["fuel_monthly"] == 80
+
+    def test_merge_renormalises_totals(self):
+        from engine.loader import _normalise_profile
+        profile = _normalise_profile(self._base_profile())
+        bank = self._bank_result(expenses={"living": {"groceries_monthly": 500}})
+        merged = merge_bank_data(profile, bank)
+        # Totals should reflect new groceries figure
+        assert merged["expenses"]["_total_monthly"] == 1200 + 500
+
+    def test_merge_does_not_mutate_input(self):
+        from engine.loader import _normalise_profile
+        profile = _normalise_profile(self._base_profile())
+        original_groceries = profile["expenses"]["living"]["groceries_monthly"]
+        bank = self._bank_result(expenses={"living": {"groceries_monthly": 999}})
+        merge_bank_data(profile, bank)
+        assert profile["expenses"]["living"]["groceries_monthly"] == original_groceries
+
+    def test_merge_infers_income_when_missing(self):
+        from engine.loader import _normalise_profile
+        base = self._base_profile()
+        base["income"] = {}  # no salary specified
+        profile = _normalise_profile(base)
+        bank = self._bank_result(income_txns=[
+            {"date": "2026-03-05", "description": "SALARY ACME", "amount": 3000.00},
+        ])
+        merged = merge_bank_data(profile, bank)
+        assert merged["income"]["primary_gross_annual"] == 36000.00
+        assert merged["_bank_import"]["income_inferred"] is not None
+
+    def test_merge_does_not_overwrite_existing_income(self):
+        from engine.loader import _normalise_profile
+        profile = _normalise_profile(self._base_profile())
+        bank = self._bank_result(income_txns=[
+            {"date": "2026-03-05", "description": "SALARY ACME", "amount": 5000.00},
+        ])
+        merged = merge_bank_data(profile, bank)
+        # Profile already had 50000, bank doesn't override
+        assert merged["income"]["primary_gross_annual"] == 50000
+        assert merged["_bank_import"]["income_inferred"] is None
+
+    def test_merge_attaches_bank_import_metadata(self):
+        from engine.loader import _normalise_profile
+        profile = _normalise_profile(self._base_profile())
+        bank = self._bank_result(
+            expenses={"living": {"groceries_monthly": 400}},
+            recurring=[{"description": "Netflix", "monthly_estimate": 12.99}],
+        )
+        merged = merge_bank_data(profile, bank)
+        assert "_bank_import" in merged
+        bi = merged["_bank_import"]
+        assert "summary" in bi
+        assert "expense_fields_overridden" in bi or "expense_fields_supplemented" in bi
+        assert len(bi["recurring_transactions"]) == 1

@@ -55,6 +55,7 @@ class Transaction:
     """A single normalised bank transaction.
 
     amount: signed — negative for outflows (debits), positive for inflows.
+    confidence: 0.0–1.0 score for the auto-categorisation. None if uncategorised.
     """
     txn_date: date
     description: str
@@ -62,6 +63,7 @@ class Transaction:
     bank: str
     category: str | None = None
     sub_category: str | None = None
+    confidence: float | None = None
     raw: dict[str, str] = field(default_factory=dict)
 
 
@@ -190,28 +192,114 @@ def categorise_transactions(
     "sainsbury" matches "SAINSBURYS GROCERIES" but "tfl" does not match
     inside "Netflix". First matching rule wins. Inflows are left
     uncategorised.
+
+    Sets a confidence score on each matched transaction:
+      1.0  — exact word match (description equals or starts with the keyword)
+      0.8  — keyword found at a word boundary in a longer string
+      0.5  — fallback for short keywords (<=3 chars) where false positives are likelier
     """
     # Pre-compile prefix-anchored word-boundary regexes for each keyword
-    flat_rules: list[tuple[re.Pattern[str], str, str]] = []
+    flat_rules: list[tuple[re.Pattern[str], str, str, str]] = []
     for category, sub_map in rules.items():
         for sub_key, keywords in sub_map.items():
             for kw in keywords:
                 pattern = re.compile(rf"\b{re.escape(kw)}", re.IGNORECASE)
-                flat_rules.append((pattern, category, sub_key))
+                flat_rules.append((pattern, category, sub_key, kw))
 
     matched = 0
     for txn in transactions:
         if txn.amount >= 0:
             continue  # only categorise outflows
-        for pattern, category, sub_key in flat_rules:
+        for pattern, category, sub_key, kw in flat_rules:
             if pattern.search(txn.description):
                 txn.category = category
                 txn.sub_category = sub_key
+                txn.confidence = _score_match(txn.description, kw)
                 matched += 1
                 break
 
     logger.info("Categorised %d/%d outflow transactions", matched, sum(1 for t in transactions if t.amount < 0))
     return transactions
+
+
+def detect_income_transactions(
+    transactions: list[Transaction], min_amount: float = 500.0,
+) -> list[Transaction]:
+    """Identify likely salary / regular income credits.
+
+    Heuristic: large positive (>= min_amount) credits whose description
+    contains a payroll-style keyword (salary, payroll, wages, employer).
+    Returns a list of matching transactions, sorted by date.
+    """
+    payroll_re = re.compile(
+        r"\b(salary|payroll|wages?|employer|paye|net pay)\b", re.IGNORECASE,
+    )
+    matches = [
+        t for t in transactions
+        if t.amount >= min_amount and payroll_re.search(t.description)
+    ]
+    matches.sort(key=lambda t: t.txn_date)
+    logger.info("Detected %d likely income transactions", len(matches))
+    return matches
+
+
+def detect_recurring_transactions(
+    transactions: list[Transaction],
+    min_occurrences: int = 2,
+    amount_tolerance_pct: float = 0.10,
+) -> list[dict[str, Any]]:
+    """Identify recurring outflows (subscriptions, direct debits, loan payments).
+
+    Groups outflows by a normalised description key and reports any group
+    where:
+      - it appears at least ``min_occurrences`` times, AND
+      - the amounts are within ``amount_tolerance_pct`` of the mean.
+
+    Returns a list of dicts: {description, occurrences, mean_amount,
+    monthly_estimate, first_seen, last_seen, category, sub_category}.
+    Sorted by monthly_estimate descending.
+    """
+    groups: dict[str, list[Transaction]] = defaultdict(list)
+    for txn in transactions:
+        if txn.amount >= 0:
+            continue
+        key = _normalise_merchant(txn.description)
+        if key:
+            groups[key].append(txn)
+
+    results: list[dict[str, Any]] = []
+    for key, txns in groups.items():
+        if len(txns) < min_occurrences:
+            continue
+        amounts = [abs(t.amount) for t in txns]
+        mean = sum(amounts) / len(amounts)
+        if mean == 0:
+            continue
+        # All amounts must be within tolerance of mean
+        if any(abs(a - mean) / mean > amount_tolerance_pct for a in amounts):
+            continue
+        dates = sorted(t.txn_date for t in txns)
+        span_days = (dates[-1] - dates[0]).days or 30
+        # Cadence: estimate average days between occurrences
+        cadence_days = span_days / max(1, len(txns) - 1) if len(txns) > 1 else 30
+        monthly_estimate = round(mean * (30 / cadence_days), 2) if cadence_days > 0 else mean
+        first_txn = txns[0]
+        results.append({
+            "description": first_txn.description,
+            "merchant_key": key,
+            "occurrences": len(txns),
+            "mean_amount": round(mean, 2),
+            "monthly_estimate": monthly_estimate,
+            "cadence_days": round(cadence_days, 1),
+            "first_seen": dates[0].isoformat(),
+            "last_seen": dates[-1].isoformat(),
+            "category": first_txn.category,
+            "sub_category": first_txn.sub_category,
+        })
+
+    results.sort(key=lambda r: r["monthly_estimate"], reverse=True)
+    logger.info("Detected %d recurring transaction groups", len(results))
+    return results
 
 
 def aggregate_to_expenses(
@@ -266,8 +354,9 @@ def import_bank_csv(
 ) -> dict[str, Any]:
     """End-to-end: parse, categorise, aggregate into a profile expenses block.
 
-    Returns a dict with the generated expenses block plus a summary of what
-    was parsed (transaction count, date range, uncategorised count).
+    Returns a dict with the generated expenses block, detected income and
+    recurring transactions, and a summary of what was parsed (transaction
+    count, date range, uncategorised count, average confidence).
     """
     transactions = parse_csv(path)
     rules = load_category_rules(rules_path)
@@ -276,14 +365,34 @@ def import_bank_csv(
 
     outflows = [t for t in transactions if t.amount < 0]
     uncategorised = [t for t in outflows if not t.category]
+    categorised = [t for t in outflows if t.category]
+    avg_confidence = (
+        round(sum(t.confidence or 0 for t in categorised) / len(categorised), 3)
+        if categorised else 0.0
+    )
+
+    income = detect_income_transactions(transactions)
+    recurring = detect_recurring_transactions(transactions)
 
     return {
         "expenses": expenses,
+        "income_transactions": [
+            {
+                "date": t.txn_date.isoformat(),
+                "description": t.description,
+                "amount": t.amount,
+            }
+            for t in income
+        ],
+        "recurring_transactions": recurring,
         "summary": {
             "transactions_parsed": len(transactions),
             "outflow_count": len(outflows),
             "inflow_count": len(transactions) - len(outflows),
             "uncategorised_count": len(uncategorised),
+            "average_confidence": avg_confidence,
+            "income_detected_count": len(income),
+            "recurring_detected_count": len(recurring),
             "date_range": _date_range(transactions),
             "months_covered": _infer_months(transactions),
             "bank": transactions[0].bank if transactions else None,
@@ -387,6 +496,47 @@ def _parse_amount(value: str) -> float:
 
     amount = float(value)
     return -amount if negative else amount
+
+
+def _score_match(description: str, keyword: str) -> float:
+    """Confidence score for a categorisation hit.
+
+    1.0 — description exactly matches the keyword (whitespace-trimmed, lowercase)
+    0.9 — description starts with the keyword
+    0.8 — keyword length > 3 (specific enough that a word-boundary hit is reliable)
+    0.5 — keyword length <= 3 (short, higher false-positive risk)
+    """
+    desc = description.strip().lower()
+    kw = keyword.strip().lower()
+    if desc == kw:
+        return 1.0
+    if desc.startswith(kw):
+        return 0.9
+    if len(kw) > 3:
+        return 0.8
+    return 0.5
+
+
+# Strip card-payment trailers, store IDs, and dates so that
+# "TESCO STORES 1234 LONDON 03MAR" and "TESCO STORES 5678 LONDON 17MAR"
+# normalise to the same merchant key.
+_MERCHANT_NOISE = re.compile(
+    r"\b(\d{2,}|ref|payment|purchase|card|visa|mastercard|gbp|"
+    r"jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b",
+    re.IGNORECASE,
+)
+
+
+def _normalise_merchant(description: str) -> str:
+    """Reduce a transaction description to a stable merchant key.
+
+    Strips digits, payment-method noise, month abbreviations, and excess
+    whitespace, then keeps the first three significant tokens.
+    """
+    cleaned = _MERCHANT_NOISE.sub(" ", description)
+    cleaned = re.sub(r"[^a-zA-Z\s]", " ", cleaned)
+    tokens = [t for t in cleaned.lower().split() if len(t) >= 2]
+    return " ".join(tokens[:3])
 
 
 def _infer_months(transactions: list[Transaction]) -> int:
