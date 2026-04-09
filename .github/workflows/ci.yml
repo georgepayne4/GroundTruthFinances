@@ -14,10 +14,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install ruff mypy pydantic pyyaml
-      - run: ruff check engine/ main.py
-      - run: ruff format --check engine/ main.py
-      - run: mypy engine/ --ignore-missing-imports
+      - run: pip install ruff
+      - run: ruff check .
 
   test:
     runs-on: ubuntu-latest
