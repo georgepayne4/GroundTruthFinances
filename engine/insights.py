@@ -76,9 +76,71 @@ def generate_insights(
         "positive_reinforcements": _positive_reinforcements(cashflow, debt_analysis, scoring, profile),
         "recommended_next_steps": _next_steps(scoring, debt_analysis, goal_analysis, mortgage_analysis),
         "review_schedule": _generate_review_triggers(profile, cashflow, debt_analysis, goal_analysis, scoring),
+        "subscription_insights": _subscription_insights(profile, cashflow),
     }
 
     return insights
+
+
+def _subscription_insights(profile: dict, cashflow: dict) -> dict[str, Any]:
+    """v5.2-06: Surface subscription summary, price changes, and savings hint.
+
+    Reads from profile['_bank_import']['subscriptions'] (populated by
+    merge_bank_data when a CSV is supplied). Returns an empty dict when
+    no bank data is available, so the report stays clean for users who
+    only provide YAML profiles.
+    """
+    bank = profile.get("_bank_import", {}) or {}
+    subs: list[dict[str, Any]] = bank.get("subscriptions", []) or []
+    if not subs:
+        return {}
+
+    monthly_total = round(sum(s.get("monthly_cost", 0) for s in subs), 2)
+    annual_total = round(monthly_total * 12, 2)
+    price_changed = [s for s in subs if s.get("price_changed")]
+
+    net_income = cashflow.get("net_income", {}).get("monthly", 0) or 0
+    pct_of_income = round((monthly_total / net_income) * 100, 1) if net_income > 0 else None
+
+    headline = (
+        f"You have {len(subs)} active subscription{'s' if len(subs) != 1 else ''} "
+        f"totalling {monthly_total:,.2f}/month ({annual_total:,.0f}/year). "
+        f"Review for unused services."
+    )
+
+    messages: list[str] = [headline]
+    if pct_of_income is not None and pct_of_income >= 5.0:
+        messages.append(
+            f"Subscriptions account for {pct_of_income:.1f}% of your net monthly income — "
+            f"high enough to deserve a deliberate review.",
+        )
+    for s in price_changed:
+        prev = s.get("previous_amount") or 0
+        curr = s.get("current_amount") or 0
+        if prev and curr:
+            messages.append(
+                f"{s['name']} increased from {prev:,.2f} to {curr:,.2f} "
+                f"(+{((curr - prev) / prev) * 100:.0f}%) — verify the new price is still worth it.",
+            )
+
+    return {
+        "applicable": True,
+        "subscription_count": len(subs),
+        "monthly_total": monthly_total,
+        "annual_total": annual_total,
+        "pct_of_net_income": pct_of_income,
+        "price_changed_count": len(price_changed),
+        "subscriptions": [
+            {
+                "name": s.get("name"),
+                "monthly_cost": s.get("monthly_cost"),
+                "frequency": s.get("frequency"),
+                "price_changed": s.get("price_changed", False),
+            }
+            for s in subs
+        ],
+        "messages": messages,
+    }
 
 
 # ---------------------------------------------------------------------------

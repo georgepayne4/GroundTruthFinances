@@ -124,6 +124,9 @@ def main() -> None:
             print(f"  Income inferred:    £{inf['annual_estimate']:,.0f}/yr from '{inf['source_description']}'")
         if bi.get("recurring_transactions"):
             print(f"  Recurring detected: {len(bi['recurring_transactions'])} groups")
+        if bi.get("subscriptions"):
+            sub_total = bsum.get("subscription_monthly_total", 0)
+            print(f"  Subscriptions:      {len(bi['subscriptions'])} active, {sub_total:,.2f}/mo total")
 
     name = profile.get("personal", {}).get("name", "Unknown")
     print(f"\nAnalysing financial profile for: {name}")
@@ -354,6 +357,15 @@ def main() -> None:
         for do_not in surplus_plan.get("do_not_overpay", []):
             print(f"  x {do_not['action']}")
 
+    # v5.2-06: Print subscription insight (only when bank CSV merge ran)
+    sub_insight = insights_result.get("subscription_insights", {})
+    if sub_insight.get("applicable"):
+        print(f"\n{'=' * 60}")
+        print("SUBSCRIPTIONS")
+        print(f"{'=' * 60}")
+        for msg in sub_insight.get("messages", []):
+            print(f"  {msg}")
+
     # Print top priorities
     priorities = insights_result.get("top_priorities", [])
     if priorities:
@@ -524,6 +536,8 @@ def _run_csv_preview(csv_path: Path) -> None:
     print(f"  Outflows:           {summary['outflow_count']}")
     print(f"  Inflows:            {summary['inflow_count']}")
     print(f"  Uncategorised:      {summary['uncategorised_count']}")
+    if summary.get("subscription_count"):
+        print(f"  Subscriptions:      {summary['subscription_count']} ({summary.get('subscription_monthly_total', 0):,.2f}/mo)")
     if summary.get("date_range"):
         dr = summary["date_range"]
         print(f"  Date range:         {dr['start']} to {dr['end']}")

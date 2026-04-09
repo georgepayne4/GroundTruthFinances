@@ -11,7 +11,9 @@ from engine.import_csv import (
     BANK_FORMATS,
     ImportCsvError,
     Transaction,
+    _classify_cadence,
     _detect_format,
+    _is_known_subscription_merchant,
     _normalise_merchant,
     _parse_amount,
     _parse_date,
@@ -20,6 +22,7 @@ from engine.import_csv import (
     categorise_transactions,
     detect_income_transactions,
     detect_recurring_transactions,
+    detect_subscriptions,
     import_bank_csv,
     load_category_rules,
     parse_csv,
@@ -580,3 +583,235 @@ class TestMergeBankData:
         assert "summary" in bi
         assert "expense_fields_overridden" in bi or "expense_fields_supplemented" in bi
         assert len(bi["recurring_transactions"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# v5.2-06: Subscription detection
+# ---------------------------------------------------------------------------
+
+def _monthly_txns(name: str, amount: float, months: int = 4) -> list[Transaction]:
+    """Build N consecutive monthly outflow transactions for a merchant."""
+    return [
+        Transaction(date(2026, 1 + i, 15), name, -amount, "monzo")
+        for i in range(months)
+    ]
+
+
+class TestClassifyCadence:
+    def test_monthly_cadence_recognised(self):
+        assert _classify_cadence(30) == "monthly"
+        assert _classify_cadence(28) == "monthly"
+        assert _classify_cadence(34) == "monthly"
+
+    def test_annual_cadence_recognised(self):
+        assert _classify_cadence(365) == "annual"
+        assert _classify_cadence(355) == "annual"
+
+    def test_weekly_not_classified(self):
+        assert _classify_cadence(7) is None
+
+    def test_quarterly_not_classified(self):
+        assert _classify_cadence(90) is None
+
+    def test_zero_returns_none(self):
+        assert _classify_cadence(0) is None
+
+
+class TestKnownSubscriptionMerchant:
+    def test_netflix_match(self):
+        assert _is_known_subscription_merchant("NETFLIX.COM 0123", "netflix com") is True
+
+    def test_spotify_match(self):
+        assert _is_known_subscription_merchant("SPOTIFY UK", "spotify uk") is True
+
+    def test_supermarket_not_match(self):
+        assert _is_known_subscription_merchant("TESCO STORES", "tesco stores") is False
+
+    def test_council_tax_not_match(self):
+        assert _is_known_subscription_merchant("Council Tax", "council tax") is False
+
+
+class TestDetectSubscriptions:
+    def test_known_monthly_subscription_detected(self):
+        txns = _monthly_txns("Netflix", 12.99, months=4)
+        subs = detect_subscriptions(txns)
+        assert len(subs) == 1
+        assert subs[0]["merchant_key"] == "netflix"
+        assert subs[0]["frequency"] == "monthly"
+        assert subs[0]["monthly_cost"] == 12.99
+        assert subs[0]["known_merchant"] is True
+        assert subs[0]["price_changed"] is False
+
+    def test_groceries_not_classified_as_subscription(self):
+        # Recurring monthly grocery shop at the same merchant — not a sub.
+        txns = _monthly_txns("TESCO STORES", 200.00, months=4)
+        subs = detect_subscriptions(txns)
+        assert subs == []
+
+    def test_price_increase_detected(self):
+        txns = [
+            Transaction(date(2026, 1, 15), "Netflix", -10.99, "monzo"),
+            Transaction(date(2026, 2, 15), "Netflix", -10.99, "monzo"),
+            Transaction(date(2026, 3, 15), "Netflix", -12.99, "monzo"),
+            Transaction(date(2026, 4, 15), "Netflix", -12.99, "monzo"),
+        ]
+        subs = detect_subscriptions(txns)
+        assert len(subs) == 1
+        sub = subs[0]
+        assert sub["price_changed"] is True
+        assert sub["previous_amount"] == 10.99
+        assert sub["current_amount"] == 12.99
+        assert sub["monthly_cost"] == 12.99  # uses latest
+
+    def test_annual_subscription_classified(self):
+        # Two charges roughly 12 months apart for a known sub
+        txns = [
+            Transaction(date(2025, 3, 1), "Amazon Prime", -95.00, "monzo"),
+            Transaction(date(2026, 3, 1), "Amazon Prime", -95.00, "monzo"),
+        ]
+        subs = detect_subscriptions(txns)
+        assert len(subs) == 1
+        assert subs[0]["frequency"] == "annual"
+        # Annual cost spread monthly: 95/12
+        assert subs[0]["monthly_cost"] == round(95 / 12, 2)
+
+    def test_amount_above_range_excluded(self):
+        # £600/month rent — way above subscription range, should not classify
+        txns = _monthly_txns("Netflix", 600.00, months=4)
+        subs = detect_subscriptions(txns)
+        assert subs == []
+
+    def test_subscription_category_overrides_unknown_merchant(self):
+        # Unknown merchant but already categorised under subscriptions
+        txns = []
+        for i in range(4):
+            t = Transaction(date(2026, 1 + i, 10), "ObscureSaaS Inc", -8.99, "monzo")
+            t.category = "living"
+            t.sub_category = "subscriptions_monthly"
+            txns.append(t)
+        subs = detect_subscriptions(txns)
+        assert len(subs) == 1
+        assert subs[0]["known_merchant"] is False
+
+    def test_weekly_recurring_not_subscription(self):
+        # Weekly outflow — too frequent to be a typical sub
+        txns = [
+            Transaction(date(2026, 1, 7), "Netflix", -12.99, "monzo"),
+            Transaction(date(2026, 1, 14), "Netflix", -12.99, "monzo"),
+            Transaction(date(2026, 1, 21), "Netflix", -12.99, "monzo"),
+            Transaction(date(2026, 1, 28), "Netflix", -12.99, "monzo"),
+        ]
+        subs = detect_subscriptions(txns)
+        assert subs == []
+
+    def test_sorted_by_monthly_cost_descending(self):
+        txns = (
+            _monthly_txns("Spotify", 9.99, months=3)
+            + _monthly_txns("Netflix", 17.99, months=3)
+            + _monthly_txns("Disney", 8.99, months=3)
+        )
+        subs = detect_subscriptions(txns)
+        costs = [s["monthly_cost"] for s in subs]
+        assert costs == sorted(costs, reverse=True)
+        assert subs[0]["merchant_key"] == "netflix"
+
+    def test_inflows_ignored(self):
+        txns = [
+            Transaction(date(2026, 1, 15), "Netflix Refund", 12.99, "monzo"),
+            Transaction(date(2026, 2, 15), "Netflix Refund", 12.99, "monzo"),
+        ]
+        subs = detect_subscriptions(txns)
+        assert subs == []
+
+    def test_import_bank_csv_includes_subscriptions(self, tmp_path):
+        csv_path = tmp_path / "monzo.csv"
+        csv_path.write_text(
+            "Date,Time,Type,Name,Emoji,Category,Amount,Currency,Local amount,"
+            "Local currency,Notes and #tags,Address,Receipt,Description,"
+            "Category split,Money Out,Money In\n"
+            "15/01/2026,08:30:00,Card payment,Netflix,📺,Entertainment,-12.99,"
+            "GBP,-12.99,GBP,,,,,,-12.99,\n"
+            "15/02/2026,08:30:00,Card payment,Netflix,📺,Entertainment,-12.99,"
+            "GBP,-12.99,GBP,,,,,,-12.99,\n"
+            "15/03/2026,08:30:00,Card payment,Netflix,📺,Entertainment,-12.99,"
+            "GBP,-12.99,GBP,,,,,,-12.99,\n",
+            encoding="utf-8",
+        )
+        result = import_bank_csv(csv_path)
+        assert "subscriptions" in result
+        assert result["summary"]["subscription_count"] >= 1
+        assert result["summary"]["subscription_monthly_total"] >= 12.99
+
+
+class TestSubscriptionInsight:
+    def _profile_with_subs(self, subs):
+        from engine.loader import _normalise_profile
+        from tests.test_import_csv import TestMergeBankData
+        base = TestMergeBankData()._base_profile()
+        profile = _normalise_profile(base)
+        profile["_bank_import"] = {
+            "summary": {},
+            "subscriptions": subs,
+            "recurring_transactions": [],
+            "expense_fields_overridden": [],
+            "expense_fields_supplemented": [],
+            "income_inferred": None,
+        }
+        return profile
+
+    def test_no_subscriptions_returns_empty(self):
+        from engine.insights import _subscription_insights
+        profile = self._profile_with_subs([])
+        cashflow = {"net_income": {"monthly": 3000}}
+        assert _subscription_insights(profile, cashflow) == {}
+
+    def test_no_bank_import_returns_empty(self):
+        from engine.insights import _subscription_insights
+        profile = {"_bank_import": {}}
+        cashflow = {"net_income": {"monthly": 3000}}
+        assert _subscription_insights(profile, cashflow) == {}
+
+    def test_summary_totals(self):
+        from engine.insights import _subscription_insights
+        profile = self._profile_with_subs([
+            {"name": "Netflix", "monthly_cost": 12.99, "frequency": "monthly", "price_changed": False},
+            {"name": "Spotify", "monthly_cost": 9.99, "frequency": "monthly", "price_changed": False},
+        ])
+        cashflow = {"net_income": {"monthly": 3000}}
+        result = _subscription_insights(profile, cashflow)
+        assert result["applicable"] is True
+        assert result["subscription_count"] == 2
+        assert result["monthly_total"] == 22.98
+        assert result["annual_total"] == round(22.98 * 12, 2)
+
+    def test_price_change_message_included(self):
+        from engine.insights import _subscription_insights
+        profile = self._profile_with_subs([
+            {
+                "name": "Netflix", "monthly_cost": 12.99, "frequency": "monthly",
+                "price_changed": True, "previous_amount": 10.99, "current_amount": 12.99,
+            },
+        ])
+        cashflow = {"net_income": {"monthly": 3000}}
+        result = _subscription_insights(profile, cashflow)
+        assert result["price_changed_count"] == 1
+        assert any("Netflix" in m and "10.99" in m for m in result["messages"])
+
+    def test_high_pct_of_income_warning(self):
+        from engine.insights import _subscription_insights
+        profile = self._profile_with_subs([
+            {"name": "BigSub", "monthly_cost": 200.0, "frequency": "monthly", "price_changed": False},
+        ])
+        cashflow = {"net_income": {"monthly": 3000}}
+        result = _subscription_insights(profile, cashflow)
+        # 200/3000 = 6.67% > 5% threshold
+        assert any("net monthly income" in m for m in result["messages"])
+
+    def test_pct_of_income_skipped_when_no_income(self):
+        from engine.insights import _subscription_insights
+        profile = self._profile_with_subs([
+            {"name": "Netflix", "monthly_cost": 12.99, "frequency": "monthly", "price_changed": False},
+        ])
+        cashflow = {"net_income": {"monthly": 0}}
+        result = _subscription_insights(profile, cashflow)
+        assert result["pct_of_net_income"] is None

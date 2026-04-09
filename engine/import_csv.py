@@ -302,6 +302,119 @@ def detect_recurring_transactions(
     return results
 
 
+_SUBSCRIPTION_KEYWORDS: tuple[str, ...] = (
+    "netflix", "spotify", "disney", "amazon prime", "prime video",
+    "apple.com", "apple music", "icloud", "youtube", "hulu",
+    "google", "google one", "google storage", "microsoft", "office 365",
+    "adobe", "creative cloud", "dropbox", "notion", "github",
+    "audible", "kindle", "patreon", "substack", "medium",
+    "nytimes", "guardian", "ft.com", "telegraph", "the times",
+    "now tv", "nowtv", "discovery+", "paramount", "britbox",
+    "duolingo", "linkedin", "figma", "1password", "lastpass",
+    "expressvpn", "nordvpn", "proton",
+)
+
+
+def detect_subscriptions(
+    transactions: list[Transaction],
+    recurring_groups: list[dict[str, Any]] | None = None,
+    price_drift_pct: float = 0.05,
+) -> list[dict[str, Any]]:
+    """v5.2-06: Identify recurring outflows that look like subscriptions.
+
+    A subscription is a recurring transaction with:
+      - monthly cadence (~25-35 days) or annual cadence (~350-380 days)
+      - amount in a plausible subscription range (£1-£500 per charge)
+      - merchant name matches a known subscription keyword OR
+        sub_category is the dedicated subscriptions bucket
+
+    Detects price drift within a group: if the latest occurrence is
+    >price_drift_pct above the earliest, the subscription is flagged
+    with previous_amount and current_amount. To capture price changes
+    we re-group transactions here with a wider tolerance than the
+    base recurring detector allows.
+
+    Returns a list of dicts: {name, merchant_key, monthly_cost,
+    charge_amount, frequency, category, sub_category, occurrences,
+    first_seen, last_seen, price_changed, previous_amount,
+    current_amount, known_merchant}.
+    """
+    # Re-group with a relaxed tolerance so price-drifted subs are captured.
+    relaxed_groups = detect_recurring_transactions(
+        transactions,
+        min_occurrences=2,
+        amount_tolerance_pct=0.50,
+    )
+    by_key: dict[str, dict[str, Any]] = {g["merchant_key"]: g for g in relaxed_groups}
+    if recurring_groups:
+        # Prefer the strict-tolerance entry when both exist (more accurate cadence)
+        for g in recurring_groups:
+            by_key.setdefault(g["merchant_key"], g)
+
+    # Build a quick index of original transactions per merchant key for drift checks
+    txn_by_key: dict[str, list[Transaction]] = defaultdict(list)
+    for t in transactions:
+        if t.amount >= 0:
+            continue
+        k = _normalise_merchant(t.description)
+        if k:
+            txn_by_key[k].append(t)
+
+    subs: list[dict[str, Any]] = []
+    for key, group in by_key.items():
+        cadence = group.get("cadence_days", 0)
+        frequency = _classify_cadence(cadence)
+        if frequency is None:
+            continue
+        charge_amount = group.get("mean_amount", 0)
+        if not (1.0 <= charge_amount <= 500.0):
+            continue
+
+        sub_category = group.get("sub_category") or ""
+        is_known = _is_known_subscription_merchant(group.get("description", ""), key)
+        is_subs_category = "subscription" in sub_category.lower()
+        if not (is_known or is_subs_category):
+            continue
+
+        group_txns = sorted(txn_by_key.get(key, []), key=lambda t: t.txn_date)
+        price_changed = False
+        previous_amount: float | None = None
+        current_amount: float = charge_amount
+        if len(group_txns) >= 2:
+            earliest = abs(group_txns[0].amount)
+            latest = abs(group_txns[-1].amount)
+            if earliest > 0 and abs(latest - earliest) / earliest >= price_drift_pct:
+                price_changed = True
+                previous_amount = round(earliest, 2)
+                current_amount = round(latest, 2)
+
+        monthly_cost = (
+            round(current_amount, 2) if frequency == "monthly"
+            else round(current_amount / 12, 2)
+        )
+
+        subs.append({
+            "name": _clean_subscription_name(group.get("description", key)),
+            "merchant_key": key,
+            "monthly_cost": monthly_cost,
+            "charge_amount": round(current_amount, 2),
+            "frequency": frequency,
+            "category": group.get("category"),
+            "sub_category": group.get("sub_category"),
+            "occurrences": group.get("occurrences", len(group_txns)),
+            "first_seen": group.get("first_seen"),
+            "last_seen": group.get("last_seen"),
+            "price_changed": price_changed,
+            "previous_amount": previous_amount,
+            "current_amount": round(current_amount, 2),
+            "known_merchant": is_known,
+        })
+
+    subs.sort(key=lambda s: s["monthly_cost"], reverse=True)
+    logger.info("Detected %d subscriptions", len(subs))
+    return subs
+
+
 def aggregate_to_expenses(
     transactions: list[Transaction], months: int | None = None,
 ) -> dict[str, dict[str, float]]:
@@ -373,6 +486,7 @@ def import_bank_csv(
 
     income = detect_income_transactions(transactions)
     recurring = detect_recurring_transactions(transactions)
+    subscriptions = detect_subscriptions(transactions, recurring)
 
     return {
         "expenses": expenses,
@@ -385,6 +499,7 @@ def import_bank_csv(
             for t in income
         ],
         "recurring_transactions": recurring,
+        "subscriptions": subscriptions,
         "summary": {
             "transactions_parsed": len(transactions),
             "outflow_count": len(outflows),
@@ -393,6 +508,10 @@ def import_bank_csv(
             "average_confidence": avg_confidence,
             "income_detected_count": len(income),
             "recurring_detected_count": len(recurring),
+            "subscription_count": len(subscriptions),
+            "subscription_monthly_total": round(
+                sum(s["monthly_cost"] for s in subscriptions), 2,
+            ),
             "date_range": _date_range(transactions),
             "months_covered": _infer_months(transactions),
             "bank": transactions[0].bank if transactions else None,
@@ -525,6 +644,32 @@ _MERCHANT_NOISE = re.compile(
     r"jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b",
     re.IGNORECASE,
 )
+
+
+def _classify_cadence(cadence_days: float) -> str | None:
+    """Map an average inter-transaction gap to a recurrence frequency.
+
+    Returns 'monthly', 'annual', or None if the gap doesn't match a
+    plausible subscription cadence.
+    """
+    if 25 <= cadence_days <= 35:
+        return "monthly"
+    if 350 <= cadence_days <= 380:
+        return "annual"
+    return None
+
+
+def _is_known_subscription_merchant(description: str, merchant_key: str) -> bool:
+    """Return True if the description or normalised key matches a known sub provider."""
+    haystack = f"{description} {merchant_key}".lower()
+    return any(kw in haystack for kw in _SUBSCRIPTION_KEYWORDS)
+
+
+def _clean_subscription_name(description: str) -> str:
+    """Title-case a transaction description for display as a subscription name."""
+    cleaned = _MERCHANT_NOISE.sub(" ", description)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned.title() if cleaned else description
 
 
 def _normalise_merchant(description: str) -> str:
