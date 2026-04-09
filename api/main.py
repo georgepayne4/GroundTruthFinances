@@ -117,6 +117,10 @@ app.include_router(banking_router)
 from api.websocket import router as ws_router
 app.include_router(ws_router)
 
+# What-If Explorer router (v6.0-04)
+from api.whatif import router as whatif_router
+app.include_router(whatif_router)
+
 
 # ---------------------------------------------------------------------------
 # Middleware: audit logging + rate limiting

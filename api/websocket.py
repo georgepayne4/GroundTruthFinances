@@ -1,15 +1,18 @@
-"""api/websocket.py — WebSocket endpoint for real-time analysis (v6.0-03).
+"""api/websocket.py — WebSocket endpoint for real-time analysis (v6.0-03/04).
 
 Streams pipeline progress to connected clients. Protocol:
 
 Client sends:
   {"type": "analyse", "profile": {...}, "assumptions": {...}}
+  {"type": "whatif", "profile": {...}, "changes": [{"path": "...", "value": ...}]}
+  {"type": "ping"}
 
 Server streams:
   {"type": "progress", "stage": "cashflow", "status": "running", "index": 3, "total": 16}
   {"type": "progress", "stage": "cashflow", "status": "complete", "index": 3, "total": 16, "duration_ms": 12.5}
   ...
   {"type": "result", "report": {...}}
+  {"type": "whatif_result", "base_score": ..., "modified_score": ..., "deltas": [...]}
   {"type": "error", "detail": "..."}
 """
 
@@ -45,6 +48,8 @@ async def ws_analyse(websocket: WebSocket) -> None:
             msg_type = message.get("type")
             if msg_type == "analyse":
                 await _handle_analyse(websocket, message)
+            elif msg_type == "whatif":
+                await _handle_whatif(websocket, message)
             elif msg_type == "ping":
                 await websocket.send_json({"type": "pong"})
             else:
@@ -112,6 +117,47 @@ def _update_to_dict(update: StageUpdate, index: int, total: int) -> dict[str, An
     if update.error:
         d["error"] = update.error
     return d
+
+
+async def _handle_whatif(websocket: WebSocket, message: dict[str, Any]) -> None:
+    """Run what-if comparison and stream results (v6.0-04)."""
+    profile = message.get("profile")
+    if not profile or not isinstance(profile, dict):
+        await _send_error(websocket, "Missing or invalid 'profile' field")
+        return
+
+    changes = message.get("changes")
+    if not changes or not isinstance(changes, list):
+        await _send_error(websocket, "Missing or invalid 'changes' field")
+        return
+
+    assumptions = message.get("assumptions")
+
+    try:
+        from api.whatif import ParameterChange, run_whatif
+
+        param_changes = [ParameterChange(path=c["path"], value=c["value"]) for c in changes]
+
+        await websocket.send_json({"type": "progress", "stage": "whatif_base", "status": "running"})
+        result = run_whatif(profile, param_changes, assumptions)
+        await websocket.send_json({"type": "progress", "stage": "whatif_base", "status": "complete"})
+
+        await websocket.send_json({
+            "type": "whatif_result",
+            "changes_applied": result.changes_applied,
+            "base_score": result.base_score,
+            "modified_score": result.modified_score,
+            "score_delta": result.score_delta,
+            "base_grade": result.base_grade,
+            "modified_grade": result.modified_grade,
+            "deltas": [d.model_dump() for d in result.deltas],
+        })
+
+    except KeyError as exc:
+        await _send_error(websocket, f"Invalid change format: {exc}")
+    except Exception as exc:
+        logger.error("What-if error: %s", exc)
+        await _send_error(websocket, f"What-if analysis failed: {exc}")
 
 
 async def _send_error(websocket: WebSocket, detail: str) -> None:
