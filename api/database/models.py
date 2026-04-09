@@ -183,6 +183,37 @@ class BankTransaction(Base):
     )
 
 
+class Notification(Base):
+    """In-app notification for a user (v6.0-05)."""
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    trigger = Column(String(64), nullable=False)
+    severity = Column(String(16), nullable=False, default="info")
+    title = Column(String(512), nullable=False)
+    message = Column(Text, nullable=False)
+    read_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    __table_args__ = (
+        Index("ix_notification_user_created", "user_id", "created_at"),
+    )
+
+
+class NotificationPreference(Base):
+    """Per-user notification preferences (v6.0-05)."""
+    __tablename__ = "notification_preferences"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    score_threshold = Column(Float, nullable=False, default=5.0)
+    review_interval_days = Column(Integer, nullable=False, default=30)
+    email_enabled = Column(Boolean, nullable=False, default=False)
+    in_app_enabled = Column(Boolean, nullable=False, default=True)
+    webhook_url = Column(String(512), nullable=True)
+
+
 class AuditLog(Base):
     """Records API calls for compliance and debugging (v5.3-04)."""
     __tablename__ = "audit_log"
