@@ -127,6 +127,35 @@ async def get_assumptions() -> dict[str, Any]:
     return load_assumptions(get_default_assumptions_path())
 
 
+@app.post(
+    "/api/v1/assumptions/update",
+    summary="Fetch latest values from public data sources and update assumptions",
+    dependencies=[Depends(verify_api_key)],
+)
+async def update_assumptions() -> dict[str, Any]:
+    """Run the auto-update pipeline: fetch BoE base rate, ONS CPI, etc."""
+    from engine.assumption_updater import run_update
+    from engine.loader import load_assumptions
+
+    assumptions = load_assumptions(get_default_assumptions_path())
+    result = run_update(assumptions)
+
+    return {
+        "changes": [
+            {
+                "key": c.key_path,
+                "old": c.old_value,
+                "new": c.new_value,
+                "source": c.source,
+            }
+            for c in result.changes
+        ],
+        "change_count": len(result.changes),
+        "errors": result.errors,
+        "source_date": result.source_date,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Profile management (new in v5.3-02)
 # ---------------------------------------------------------------------------

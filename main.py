@@ -76,6 +76,11 @@ def main() -> None:
     )
     logger.info("GroundTruth engine v%s starting", engine.__version__)
 
+    # v5.3-03: Assumption auto-update — short-circuits the main pipeline
+    if args.update_assumptions:
+        _run_assumption_update(args.assumptions)
+        return
+
     # v5.2-01: CSV import preview mode — short-circuits the main pipeline
     if args.import_csv:
         _run_csv_preview(args.import_csv)
@@ -547,6 +552,35 @@ def _print_diff_summary(diff: dict) -> None:
     print("  " + " | ".join(parts))
 
 
+def _run_assumption_update(assumptions_path_arg: Path | None) -> None:
+    """Fetch latest data from public sources, apply updates, report changes."""
+    from engine.assumption_updater import run_update, save_assumptions_yaml
+    from engine.loader import load_assumptions
+
+    project_root = Path(__file__).resolve().parent
+    assumptions_path = assumptions_path_arg or project_root / "config" / "assumptions.yaml"
+
+    print(f"Loading assumptions: {assumptions_path}")
+    assumptions = load_assumptions(assumptions_path)
+
+    print("Fetching latest data from public sources...")
+    result = run_update(assumptions)
+
+    if result.errors:
+        print(f"\n  Fetch errors ({len(result.errors)}):")
+        for err in result.errors:
+            print(f"    - {err}")
+
+    if result.changes:
+        print(f"\n  Changes applied ({len(result.changes)}):")
+        for c in result.changes:
+            print(f"    {c.key_path}: {c.old_value} -> {c.new_value}  (source: {c.source})")
+        save_assumptions_yaml(assumptions, str(assumptions_path))
+        print(f"\n  Updated assumptions written to {assumptions_path}")
+    else:
+        print("\n  No changes needed -- assumptions are up to date.")
+
+
 def _run_csv_preview(csv_path: Path) -> None:
     """Parse a bank CSV and print a YAML-formatted expenses preview to stdout."""
     print(f"Importing bank CSV: {csv_path}")
@@ -642,6 +676,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         default=False,
         help="Do not record this run in the history database",
+    )
+    parser.add_argument(
+        "--update-assumptions",
+        action="store_true",
+        default=False,
+        help="Fetch latest BoE base rate and ONS CPI, update assumptions, and exit",
     )
     parser.add_argument(
         "--verbose", "-v",
