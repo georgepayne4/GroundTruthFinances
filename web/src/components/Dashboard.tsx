@@ -61,25 +61,29 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="border-b border-gray-200 bg-white">
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded-lg focus:bg-gray-900 focus:px-4 focus:py-2 focus:text-white">
+        Skip to main content
+      </a>
+      <header className="border-b border-gray-200 bg-white" role="banner">
         <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-gray-900">GroundTruth</h1>
-            <p className="text-xs text-gray-500">Financial Planning Dashboard</p>
+            <p className="text-xs text-gray-600">Financial Planning Dashboard</p>
           </div>
           <button
             onClick={handleAnalyse}
             disabled={loading}
-            className="rounded-lg bg-gray-900 px-5 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50 transition-colors"
+            aria-busy={loading}
+            className="rounded-lg bg-gray-900 px-5 py-2 text-sm font-medium text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-2 disabled:opacity-50 transition-colors"
           >
             {loading ? "Analysing..." : "Run Analysis"}
           </button>
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-6 py-6">
+      <main id="main-content" className="mx-auto max-w-7xl px-6 py-6" role="main">
         {error && (
-          <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+          <div role="alert" className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">
             {error}
           </div>
         )}
@@ -88,16 +92,18 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="lg:col-span-2">
               <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-                <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
+                <label htmlFor="profile-json" className="block text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
                   Profile JSON
-                </h3>
+                </label>
                 <textarea
+                  id="profile-json"
                   value={profileJson}
                   onChange={(e) => setProfileJson(e.target.value)}
-                  className="w-full h-80 font-mono text-xs border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                  className="w-full h-80 font-mono text-xs border border-gray-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
                   spellCheck={false}
+                  aria-describedby="profile-json-help"
                 />
-                <p className="mt-2 text-xs text-gray-400">
+                <p id="profile-json-help" className="mt-2 text-xs text-gray-600">
                   Edit the profile above and click "Run Analysis" to see your financial health dashboard.
                 </p>
               </div>
