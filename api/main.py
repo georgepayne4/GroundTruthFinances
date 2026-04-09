@@ -28,6 +28,8 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from api.banking.router import router as banking_router
+from api.cashflow_actual import router as cashflow_actual_router
+from api.comparison import router as comparison_router
 from api.database import crud
 from api.database.models import User
 from api.database.session import get_db, init_db
@@ -117,6 +119,8 @@ app.include_router(banking_router)
 app.include_router(ws_router)
 app.include_router(whatif_router)
 app.include_router(notifications_router)
+app.include_router(comparison_router)
+app.include_router(cashflow_actual_router)
 
 
 # ---------------------------------------------------------------------------
