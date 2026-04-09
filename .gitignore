@@ -23,5 +23,10 @@ george_input.yaml
 
 # Notes and planning
 IMPROVEMENTS.md
+REVIEW.md
 roadmap.md
 SESSION.md
+
+# Web frontend
+web/node_modules/
+web/dist/
