@@ -1,185 +1,248 @@
-# GroundTruth Financial Planning Engine
+# GroundTruth Financial Planning Platform
 
-A modular, advisor-grade UK financial planning engine. Analyses structured financial profiles and generates comprehensive reports with scoring, projections, and actionable recommendations.
+A comprehensive UK financial planning platform combining an advisor-grade calculation engine, REST API, and React dashboard. Analyses income, tax, debt, pensions, mortgages, insurance, and estate planning — then scores your financial health and tells you exactly what to do next.
 
 ## What It Does
 
-GroundTruth takes a YAML financial profile (income, expenses, debts, savings, goals, mortgage plans, and life events) and runs it through a 15-stage analysis pipeline:
+GroundTruth runs a 16-stage analysis pipeline across your complete financial picture:
 
-1. **Input validation** — catches data quality issues with severity-graded flags
-2. **Cashflow analysis** — UK tax/NI calculation (including Scottish bands), surplus/deficit, savings rate, spending benchmarks
-3. **Debt analysis** — per-debt payoff timelines, avalanche/snowball strategies, student loan write-off intelligence, credit card utilisation tracking
-4. **Goal feasibility** — priority-weighted surplus allocation, inflation-adjusted targets, prerequisite checks
-5. **Investment analysis** — portfolio projections, pension adequacy, employer match optimisation, fee drag analysis, salary sacrifice modelling
-6. **Mortgage readiness** — borrowing capacity, deposit analysis, product comparison, shared ownership, stress tests
-7. **Insurance gap assessment** — pension-cross-referenced coverage analysis
-8. **Life event simulation** — year-by-year trajectory with milestones and childcare tax relief
-9. **Financial health scoring** — composite 0-100 score across 7 weighted categories
-10. **Stress scenarios** — job loss runway, interest rate shock, market drawdown
-11. **Estate analysis** — IHT liability, nil-rate bands, planning actions
-12. **Sensitivity analysis** — parameter sweeps across income, rates, and contributions
-13. **Advisor insights** — surplus deployment plan, tax optimisation, risk warnings, review schedule
-14. **Narrative report** — Markdown advisor letter generated from structured data
-15. **Report assembly** — structured JSON + Markdown output with optional history recording
+| Stage | What It Calculates |
+|-------|-------------------|
+| Validation | Data quality checks with severity-graded flags |
+| Cashflow | UK tax/NI (England + Scotland), surplus/deficit, savings rate, spending benchmarks |
+| Debt | Payoff timelines, avalanche/snowball strategies, student loan write-off intelligence, credit card utilisation |
+| Goals | Priority-weighted surplus allocation, inflation-adjusted targets, LISA bonus projections |
+| Investments | Portfolio projections, pension adequacy, employer match optimisation, fee drag, glide path, drawdown vs annuity |
+| Mortgage | Borrowing capacity, LTV bands, product comparison, overpayment modelling, shared ownership, stress tests |
+| Insurance | Life/income protection/critical illness gaps, pension-cross-referenced coverage |
+| Life Events | Year-by-year simulation with milestones, child costs, equity tracking |
+| Scoring | Composite 0-100 score across 7 weighted categories with grade (A+ to F) |
+| Scenarios | Job loss runway, interest rate shock, market drawdown, inflation spike |
+| Sensitivity | Parameter sweeps across income, rates, contributions, property prices |
+| Estate | IHT liability, nil-rate bands, spousal exemption, gifting strategy |
+| Insights | Surplus deployment plan, tax optimisation, risk warnings, positive reinforcements |
+| Narrative | Full Markdown advisor letter generated from structured data |
 
-### Bank Data Integration (v5.2)
+## Platform Components
 
-When provided with a bank statement CSV, the engine additionally:
+### Engine (Python)
+The core calculation engine — 18 pure-function modules, no shared state. Processes a YAML/JSON profile and returns a comprehensive analysis report.
 
-- **Auto-categorises** transactions using keyword matching with confidence scoring
-- **Detects subscriptions** with price drift alerting
-- **Identifies direct debits and standing orders** as committed expenses
-- **Verifies declared income** against observed salary credits
-- **Generates expense micro-insights** with per-category analysis and monthly trends
-- **Merges bank-derived data** into the profile before running the full pipeline
+### REST API (FastAPI)
+Full-featured API with:
+- `POST /api/v1/analyse` — Run complete analysis
+- `POST /api/v1/validate` — Validate profile structure
+- `GET /api/v1/assumptions` — Current financial assumptions
+- `GET /api/v1/history` — Historical run tracking
+- `POST /api/v1/whatif` — Interactive what-if scenarios
+- `POST /api/v1/compare` — Side-by-side profile comparison
+- `POST /api/v1/compare/branch` — Scenario branching
+- `POST /api/v1/cashflow/drift` — Planned vs actual spending
+- `POST /api/v1/export/{id}/{format}` — CSV, XLSX, PDF exports
+- WebSocket `/ws/analyse` — Real-time streaming analysis
 
-### Run History (v5.2)
+Per-user API key authentication, audit logging, rate limiting.
 
-Each engine run is optionally recorded in a local SQLite database. You can list past runs, diff any two snapshots, and track score progression over time.
+### Web Dashboard (React)
+React 18 + TypeScript + TailwindCSS dashboard with:
+- Financial health score gauge with grade
+- Monthly cashflow breakdown chart
+- Category score breakdown with progress bars
+- Priority action recommendations
+- Profile JSON editor with live analysis
+- WCAG 2.1 AA accessible, colour-blind safe palette
+
+### Open Banking (TrueLayer)
+Connect UK bank accounts for:
+- Automatic transaction sync and categorisation
+- Income verification from salary credits
+- Planned vs actual spending drift detection
+- Expense auto-population from real spending data
+
+### Bank CSV Import
+Offline alternative to Open Banking — import CSV exports from Monzo, Starling, Barclays, HSBC, Nationwide, Lloyds, NatWest.
 
 ## Quick Start
 
+### CLI Mode
+
 ```bash
 # Install dependencies
-pip install pyyaml pydantic
+pip install -r requirements.txt
 
 # Run with the included sample profile
 python main.py
 
-# Run with a custom profile
-python main.py --profile path/to/profile.yaml
-
-# Verbose logging to console
+# Run with verbose logging
 python main.py --verbose
-```
 
-### Bank CSV Import
-
-```bash
-# Preview a bank CSV (prints a YAML expenses block)
-python main.py --import-csv path/to/statement.csv
-
-# Merge bank CSV into profile and run full pipeline
+# Import a bank CSV
 python main.py --bank-csv path/to/statement.csv
-
-# Override profile expenses with bank-derived values
-python main.py --bank-csv statement.csv --bank-csv-override
 ```
 
-Supported banks: Monzo, Starling, Barclays, HSBC, Nationwide, Lloyds, NatWest.
-
-### Run History
+### API Mode
 
 ```bash
-# List recent runs
-python main.py --history
+# Install dependencies
+pip install -r requirements.txt
 
-# Diff the two most recent runs
-python main.py --diff
+# Start the API server
+uvicorn api.main:app --reload
 
-# Diff specific runs by ID
-python main.py --diff 3 7
-
-# Skip history recording for this run
-python main.py --no-history
+# API docs available at http://localhost:8000/docs
 ```
 
-## Output
+### Web Dashboard
 
-Reports are saved to `outputs/`:
-- `report.json` — structured JSON with all analysis results
-- `report.md` — narrative advisor letter in Markdown
-- `history.db` — SQLite run history (auto-created, gitignored)
-- `engine.log` — debug log
+```bash
+cd web
+npm install
+npm run dev
+# Dashboard at http://localhost:5173 (proxies API to localhost:8000)
+```
+
+### Development
+
+```bash
+# Run tests (504 tests)
+python -m pytest --tb=short -q
+
+# Lint
+ruff check .
+
+# Run with coverage
+python -m pytest --cov=engine
+
+# Full check (lint + test)
+make check
+```
 
 ## Project Structure
 
 ```
-main.py                          Pipeline entry point and CLI
+main.py                          CLI entry point
 config/
-  sample_input.yaml              Example financial profile (Alex Morgan)
-  assumptions.yaml               Tax bands, rates, scoring weights (HMRC 2025/26)
-  category_rules.yaml            Bank transaction categorisation keywords
+  sample_input.yaml              Example financial profile
+  assumptions.yaml               Tax bands, rates, weights (HMRC 2025/26, 315 lines)
+  category_rules.yaml            Bank transaction categorisation rules
 engine/
-  loader.py                      YAML loading, normalisation, bank data merging
-  validator.py                   Advisor validation layer (severity-graded flags)
+  pipeline.py                    Shared 16-stage pipeline orchestration
+  pipeline_streaming.py          Generator-based streaming pipeline
   cashflow.py                    Income tax, NI, surplus, benchmarks
+  tax.py                         UK tax calculations (income, NI, CGT, dividends, pension)
   debt.py                        Repayment strategies, write-off intelligence
   goals.py                       Goal feasibility and surplus allocation
-  investments.py                 Portfolio projections, pension adequacy
-  mortgage.py                    Borrowing capacity, product comparison
+  investments.py                 Portfolio projections, pension adequacy, fees, glide path
+  mortgage.py                    Borrowing capacity, product comparison, overpayment
   insurance.py                   Insurance gap assessment
   life_events.py                 Multi-year trajectory simulation
   scoring.py                     Financial health scoring (7 categories)
   scenarios.py                   Stress scenario modelling
-  estate.py                      IHT and estate planning
   sensitivity.py                 Parameter sensitivity analysis
-  insights.py                    Advisor-style recommendations and insights
+  estate.py                      IHT and estate planning
+  insights.py                    Advisor-style recommendations
   narrative.py                   Markdown report generation
   report.py                      Report assembly and JSON output
-  import_csv.py                  Bank CSV parser, categoriser, subscription detector
-  history.py                     SQLite-backed run history and diffing
-  tax.py                         UK income tax and NI calculations
+  import_csv.py                  Bank CSV parser and categoriser
+  history.py                     Run history and diffing
+  assumption_updater.py          Auto-update from HMRC/BoE/ONS APIs
+  providers.py                   Account provider abstraction (CSV, Open Banking)
+  loader.py                      YAML loading and normalisation
+  validator.py                   Input validation (severity-graded flags)
   schemas.py                     Pydantic validation for assumptions.yaml
-  types.py                       TypedDict definitions for module results
+  types.py                       TypedDict definitions
   exceptions.py                  Custom exception hierarchy
   utils.py                       Shared utilities
+api/
+  main.py                        FastAPI application
+  models.py                      Pydantic request/response models
+  dependencies.py                Auth, rate limiting, dependency injection
+  exports.py                     CSV/XLSX/PDF report generation
+  websocket.py                   WebSocket streaming endpoint
+  whatif.py                      What-If explorer
+  comparison.py                  Profile comparison and branching
+  cashflow_actual.py             Planned vs actual drift detection
+  database/
+    models.py                    SQLAlchemy ORM models
+    session.py                   Database session management
+    crud.py                      CRUD operations
+  banking/
+    router.py                    Open Banking API endpoints (11 routes)
+    truelayer.py                 TrueLayer API client
+    encryption.py                Fernet token encryption
+    sync.py                      Account and transaction sync
+    crud.py                      Banking CRUD operations
+    income.py                    Income verification
+    expenses.py                  Expense summarisation
+  notifications/
+    router.py                    Notification API endpoints
+    triggers.py                  Score change, goal deadline, tax year triggers
+    channels.py                  In-app, email, webhook delivery
+    crud.py                      Notification CRUD
+web/
+  src/
+    App.tsx                      React application root
+    lib/api.ts                   Typed API client
+    components/
+      Dashboard.tsx              Main dashboard with profile editor
+      ScoreGauge.tsx             SVG score gauge with grade
+      MetricCard.tsx             Key metric display card
+      CashflowBar.tsx            Recharts cashflow bar chart
+      CategoryScores.tsx         Score breakdown with progress bars
+      PriorityActions.tsx        Priority action list
 tests/
-  conftest.py                    Shared fixtures
-  test_cashflow.py               Cashflow analysis tests
-  test_debt.py                   Debt analysis and credit card model tests
-  test_expense_insights.py       Expense micro-insights and trend detection tests
-  test_history.py                Run history and diffing tests
-  test_import_csv.py             CSV parsing, subscriptions, income verification tests
-  test_integration.py            End-to-end pipeline test
-  test_investments.py            Investment analysis tests
-  test_loader.py                 Account aggregation and normalisation tests
-  test_scoring.py                Scoring tests
-  test_tax.py                    UK tax calculation tests
-  test_validator.py              Validation and credit utilisation tests
+  conftest.py                    Shared fixtures (22 test files, 504 tests)
 ```
 
 ## Profile Format
 
-Profiles are YAML files with these sections:
+Profiles are YAML or JSON with these sections:
 
 | Section | Description |
 |---------|-------------|
-| `personal` | Name, age, retirement age, risk profile, employment type |
-| `income` | Primary salary, partner income, side income, bonuses |
-| `expenses` | Housing, transport, living, and other costs (monthly/annual) |
-| `debts` | Balance, rate, minimum payment, type; credit cards with utilisation fields |
-| `savings` | Emergency fund, general, ISA, LISA, pension balances and contributions |
-| `accounts` | Multi-account balance tracking (optional, overrides savings fields) |
-| `goals` | Target amount, deadline, priority, category for each goal |
-| `mortgage` | Target property value, deposit preference, term |
-| `life_events` | Planned income/expense changes by year offset |
+| `personal` | Age, retirement age, risk profile, employment type, tax region |
+| `income` | Primary salary, partner income, side income, bonuses, rental, dividends |
+| `expenses` | Housing, transport, living costs (monthly/annual) |
+| `debts` | Balance, rate, type; credit cards with utilisation and payment behaviour |
+| `savings` | Emergency fund, ISA, LISA, pension balances, contribution rates, fees |
+| `accounts` | Multi-account balance tracking (overrides savings fields) |
+| `goals` | Target amount, deadline, priority, category |
+| `mortgage` | Target property, deposit, term, joint application, deposit sources |
+| `life_events` | Planned changes by year offset (income, expenses, milestones) |
+| `insurance` | Current coverage (life, income protection, critical illness) |
+| `partner` | Partner financial details for joint planning |
 
 See `config/sample_input.yaml` for a complete example.
 
 ## Assumptions
 
-All financial assumptions (tax bands, NI thresholds, inflation rates, investment returns, scoring weights, mortgage criteria) are centralised in `config/assumptions.yaml` with source comments (e.g., `# HMRC 2025/26`). Override without changing code.
+All financial parameters are centralised in `config/assumptions.yaml` (315 lines) with source comments:
+- Tax bands, NI thresholds, personal allowance (HMRC 2025/26)
+- Scottish income tax bands (6 rates)
+- Investment returns by risk profile, inflation rates
+- Mortgage products, LTV tiers, stamp duty bands
+- State pension, pension annual allowance with taper
+- Scoring weights, insurance cost estimates, child costs by age
+- Student loan plans (2, 3, postgrad), ISA/LISA limits
 
-Validated at load time via Pydantic schemas (`engine/schemas.py`).
-
-## Testing
-
-```bash
-# Run full suite (293 tests)
-python -m pytest
-
-# Run with coverage
-python -m pytest --cov=engine
-
-# Run a specific test file
-python -m pytest tests/test_history.py -v
-```
+Auto-updated from HMRC, BoE, and ONS APIs via `engine/assumption_updater.py`.
 
 ## Requirements
 
 - Python 3.10+
-- PyYAML
-- Pydantic 2.0+
-- pytest (dev)
-- ruff (dev)
+- Node.js 18+ (for web dashboard)
+- See `requirements.txt` for Python dependencies
+- See `web/package.json` for frontend dependencies
+
+## Roadmap
+
+See `roadmap.md` for the forward plan. Current status:
+- **v5 (Engine Foundation):** Complete
+- **v6 (Web + Open Banking):** Complete
+- **v7 (Production Hardening):** Next — tech debt, integration tests, security, Docker
+- **v8 (Intelligence Engine):** Monte Carlo, lifetime cashflow, tax-optimal withdrawal
+- **v9 (Consumer Launch):** Full UI, auth, onboarding, pricing, deployment
+
+## License
+
+Private. Not yet open source.

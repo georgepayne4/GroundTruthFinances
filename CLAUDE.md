@@ -2,8 +2,9 @@
 
 ## Project Overview
 
-UK personal financial planning engine. Python, YAML-driven, CLI-first.
-See `roadmap.md` for the full v5+ plan.
+UK personal financial planning platform. Python engine, FastAPI REST API, React dashboard.
+Target market: self-directed professionals (£40k-£200k income) who want IFA-quality analysis at consumer prices.
+See `roadmap.md` for the forward plan (v7+).
 
 ## Commit Rules
 
@@ -83,8 +84,8 @@ See `roadmap.md` for the full v5+ plan.
 ## Module Boundaries
 
 - Modules must not import `_private` functions from other modules.
-- Known violation: `life_events.py` imports `mortgage._monthly_repayment`. Fix by extracting to shared utility.
 - Public API per module = the single top-level function. Everything else is private.
+- Shared utilities live in `engine/utils.py` for cross-module needs.
 
 ## Assumptions Config
 
@@ -122,14 +123,23 @@ YAML inputs -> loader -> validator -> cashflow -> debt -> goals -> investments
 -> estate -> insights -> narrative -> report (JSON + Markdown)
 ```
 
-Pipeline architecture. Modules are pure functions. No shared state, no database (yet).
-See `roadmap.md` for the phased evolution toward API, database, and web UI.
+Pipeline architecture. Modules are pure functions. No shared state.
+FastAPI REST API in `api/`, React dashboard in `web/`, SQLAlchemy for persistence.
+See `roadmap.md` for the forward plan.
+
+## Planning Requirement
+
+- Always enter plan mode (`/plan`) before starting any non-trivial implementation task (new features, architectural changes, multi-file refactors).
+- Trivial changes (typo fixes, single-line edits, running tests) can proceed directly.
+- Plan mode ensures alignment on approach before writing code. It is mandatory, not optional.
 
 ## Testing
 
-- No test suite exists yet (v5.1 priority).
-- Until unit tests exist: verify changes by running `python main.py` with sample_input.yaml.
-- When tests exist: run full suite before committing.
+- 504+ tests across 22 test files. Run full suite before every commit.
+- Integration tests must cover cross-module boundaries — not just unit tests per module.
+- Every new module or feature must include tests. No exceptions.
+- When adding a new engine module: include at least one integration test touching an upstream/downstream module.
+- Keep REVIEW.md updated with any new testing gaps discovered during development.
 
 ## Branch Strategy
 
@@ -149,4 +159,9 @@ See `roadmap.md` for the phased evolution toward API, database, and web UI.
 
 ## Version Cadence
 
-Versions are roadmap milestones, not calendar deadlines. Push through the roadmap session by session. Push and switch to branch methodology when the platform reaches deployable state. Ship working increments.
+- Major versions (v7, v8, v9) are release milestones with exit criteria.
+- Sub-versions (v7.1, v7.2) are individual tasks/commits within a release.
+- Each commit message references its version: `feat: add Monte Carlo projections (v8.1)`
+- When all vX.Y items are complete, that constitutes the vX release.
+- Work on `master` until v9 (deployable state), then switch to feature branches.
+- Ship working increments — every commit should leave the codebase in a passing state.
