@@ -1,4 +1,4 @@
-"""api/main.py — FastAPI application for the GroundTruth engine (v5.3-04).
+"""api/main.py — FastAPI application for the GroundTruth engine (v5.3-05).
 
 Exposes the engine as a stateless REST API with:
   - Per-user API key authentication
@@ -6,12 +6,15 @@ Exposes the engine as a stateless REST API with:
   - Audit logging middleware
   - Rate limiting (simple in-memory token bucket)
   - Admin endpoints for user and assumption management
+  - Report export (PDF, CSV, XLSX)
 
 Run with:  uvicorn api.main:app --reload
 """
 
 from __future__ import annotations
 
+import io
+import json
 import logging
 import time
 from collections import defaultdict
@@ -19,8 +22,8 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import yaml
-from fastapi import Depends, FastAPI, Query, Request, Response
-from fastapi.responses import JSONResponse
+from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Response
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from api.database import crud
@@ -83,7 +86,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="GroundTruth Financial Planning API",
-    version="5.3.4",
+    version="5.3.5",
     description="Advisor-grade UK financial planning engine.",
     responses={401: {"model": ErrorResponse}},
     lifespan=lifespan,
@@ -339,6 +342,91 @@ async def get_all_history(
     return HistoryResponse(
         runs=[HistoryRun(**r) for r in runs],
         count=len(runs),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Export endpoints (v5.3-05)
+# ---------------------------------------------------------------------------
+
+def _get_run_report(db: Session, run_id: int) -> dict[str, Any]:
+    """Fetch a run and parse its stored JSON report. Raises 404 if missing."""
+    run = crud.get_run(db, run_id)
+    if run is None or not run.full_report_json:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return json.loads(run.full_report_json)
+
+
+@app.get(
+    "/api/v1/export/{run_id}/csv",
+    summary="Export run metrics as CSV",
+    dependencies=[Depends(verify_api_key)],
+)
+async def export_csv(
+    run_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """Return key metrics from a run as a downloadable CSV file."""
+    from api.exports import generate_csv
+
+    report = _get_run_report(db, run_id)
+    csv_content = generate_csv(report)
+    return StreamingResponse(
+        io.BytesIO(csv_content.encode("utf-8")),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=report_{run_id}.csv"},
+    )
+
+
+@app.get(
+    "/api/v1/export/{run_id}/xlsx",
+    summary="Export run as Excel workbook",
+    dependencies=[Depends(verify_api_key)],
+)
+async def export_xlsx(
+    run_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """Return a multi-sheet Excel workbook for a run."""
+    from api.exports import generate_xlsx
+
+    report = _get_run_report(db, run_id)
+    xlsx_bytes = generate_xlsx(report)
+    return StreamingResponse(
+        io.BytesIO(xlsx_bytes),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=report_{run_id}.xlsx"},
+    )
+
+
+@app.get(
+    "/api/v1/export/{run_id}/pdf",
+    summary="Export run as PDF report",
+    dependencies=[Depends(verify_api_key)],
+)
+async def export_pdf(
+    run_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """Return a formatted PDF of the narrative report.
+
+    Requires weasyprint and markdown packages on the server.
+    Returns 501 if PDF generation dependencies are not installed.
+    """
+    from api.exports import generate_pdf
+
+    report = _get_run_report(db, run_id)
+    try:
+        pdf_bytes = generate_pdf(report)
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=501,
+            detail="PDF export requires 'weasyprint' and 'markdown' packages",
+        ) from exc
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=report_{run_id}.pdf"},
     )
 
 

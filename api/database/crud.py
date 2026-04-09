@@ -205,6 +205,11 @@ def record_run(
     return row.id
 
 
+def get_run(db: Session, run_id: int) -> Run | None:
+    """Return a single run by ID, or None."""
+    return db.query(Run).filter(Run.id == run_id).first()
+
+
 def list_runs(db: Session, limit: int = 10, profile_name: str | None = None) -> list[dict[str, Any]]:
     """Return recent runs as dicts (newest first)."""
     query = db.query(Run)
