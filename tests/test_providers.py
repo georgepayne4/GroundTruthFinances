@@ -165,29 +165,19 @@ class TestCsvAccountProvider:
 
 
 # ---------------------------------------------------------------------------
-# OpenBankingProvider stub tests
+# OpenBankingProvider tests (v6.0-02: requires db, no longer a stub)
 # ---------------------------------------------------------------------------
 
 class TestOpenBankingProvider:
-    def test_get_accounts_raises(self):
+    def test_requires_db_for_accounts(self):
         provider = OpenBankingProvider()
-        with pytest.raises(NotImplementedError, match="not yet implemented"):
+        with pytest.raises(RuntimeError, match="requires a database"):
             provider.get_accounts()
 
-    def test_get_transactions_raises(self):
+    def test_requires_db_for_transactions(self):
         provider = OpenBankingProvider()
-        with pytest.raises(NotImplementedError, match="not yet implemented"):
+        with pytest.raises(RuntimeError, match="requires a database"):
             provider.get_transactions("acc_123")
-
-    def test_connect_raises(self):
-        provider = OpenBankingProvider()
-        with pytest.raises(NotImplementedError, match="OAuth consent"):
-            provider.connect()
-
-    def test_refresh_raises(self):
-        provider = OpenBankingProvider()
-        with pytest.raises(NotImplementedError, match="not yet implemented"):
-            provider.refresh("acc_123")
 
     def test_default_provider_is_truelayer(self):
         provider = OpenBankingProvider()
@@ -196,5 +186,3 @@ class TestOpenBankingProvider:
     def test_custom_provider_name(self):
         provider = OpenBankingProvider(provider="plaid")
         assert provider._provider == "plaid"
-        with pytest.raises(NotImplementedError, match="plaid"):
-            provider.get_accounts()

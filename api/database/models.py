@@ -120,6 +120,69 @@ class Run(Base):
     full_report_json = Column(Text, nullable=True)
 
 
+class BankConnection(Base):
+    """An Open Banking consent linking a user to a bank via TrueLayer/Plaid (v6.0-02)."""
+    __tablename__ = "bank_connections"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider = Column(String(32), nullable=False, default="truelayer")
+    institution_name = Column(String(255), nullable=True)
+    access_token_enc = Column(Text, nullable=False)
+    refresh_token_enc = Column(Text, nullable=False)
+    token_expires_at = Column(DateTime(timezone=True), nullable=True)
+    consent_granted_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    status = Column(String(32), nullable=False, default="active")  # active, expired, revoked
+    last_synced_at = Column(DateTime(timezone=True), nullable=True)
+
+    user = relationship("User", backref="bank_connections")
+    accounts = relationship("BankAccount", back_populates="connection", cascade="all, delete-orphan")
+
+
+class BankAccount(Base):
+    """A bank account discovered via Open Banking (v6.0-02)."""
+    __tablename__ = "bank_accounts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    connection_id = Column(Integer, ForeignKey("bank_connections.id", ondelete="CASCADE"), nullable=False, index=True)
+    external_account_id = Column(String(255), nullable=False)
+    display_name = Column(String(255), nullable=True)
+    account_type = Column(String(32), nullable=False, default="current")
+    currency = Column(String(8), nullable=False, default="GBP")
+    balance = Column(Float, nullable=True)
+    last_synced_at = Column(DateTime(timezone=True), nullable=True)
+
+    connection = relationship("BankConnection", back_populates="accounts")
+    transactions = relationship("BankTransaction", back_populates="account", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint("connection_id", "external_account_id", name="uq_connection_ext_account"),
+    )
+
+
+class BankTransaction(Base):
+    """A transaction fetched via Open Banking (v6.0-02)."""
+    __tablename__ = "bank_transactions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey("bank_accounts.id", ondelete="CASCADE"), nullable=False, index=True)
+    external_transaction_id = Column(String(255), nullable=False)
+    timestamp = Column(DateTime(timezone=True), nullable=False)
+    amount = Column(Float, nullable=False)
+    currency = Column(String(8), nullable=False, default="GBP")
+    description = Column(String(512), nullable=True)
+    transaction_type = Column(String(64), nullable=True)
+    category = Column(String(64), nullable=True)
+    merchant_name = Column(String(255), nullable=True)
+
+    account = relationship("BankAccount", back_populates="transactions")
+
+    __table_args__ = (
+        UniqueConstraint("account_id", "external_transaction_id", name="uq_account_ext_txn"),
+        Index("ix_bank_txn_timestamp", "timestamp"),
+    )
+
+
 class AuditLog(Base):
     """Records API calls for compliance and debugging (v5.3-04)."""
     __tablename__ = "audit_log"

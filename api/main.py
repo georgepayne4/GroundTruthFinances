@@ -109,6 +109,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Banking router (v6.0-02)
+from api.banking.router import router as banking_router
+app.include_router(banking_router)
+
 
 # ---------------------------------------------------------------------------
 # Middleware: audit logging + rate limiting

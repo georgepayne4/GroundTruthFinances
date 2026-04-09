@@ -167,33 +167,52 @@ class CsvAccountProvider(AccountProvider):
 
 
 # ---------------------------------------------------------------------------
-# Open Banking provider (stub for v6.0-02)
+# Open Banking provider (v6.0-02)
 # ---------------------------------------------------------------------------
 
 class OpenBankingProvider(AccountProvider):
-    """Stub for TrueLayer/Plaid Open Banking integration.
+    """TrueLayer/Plaid Open Banking integration (v6.0-02).
 
-    Not yet implemented — this provider defines the integration surface
-    for v6.0-02. Calling any method raises NotImplementedError with a
-    message pointing to the roadmap.
+    Reads account and transaction data from the database (synced via
+    api/banking/sync.py). The provider is a read-only view — sync is
+    triggered through the API endpoints.
 
-    Expected flow (v6.0-02):
-    1. User initiates OAuth consent via TrueLayer/Plaid Link
-    2. Provider stores access token (encrypted) per user
-    3. get_accounts() calls provider API for linked accounts
-    4. get_transactions() fetches from provider with date filtering
-    5. refresh() triggers a data sync for stale accounts
+    For use in the engine pipeline, pass a SQLAlchemy session and user_id.
+    The provider queries bank_accounts and bank_transactions tables.
     """
 
-    def __init__(self, provider: str = "truelayer", access_token: str | None = None) -> None:
+    def __init__(
+        self,
+        provider: str = "truelayer",
+        db: Any | None = None,
+        user_id: int | None = None,
+    ) -> None:
         self._provider = provider
-        self._access_token = access_token
+        self._db = db
+        self._user_id = user_id
+
+    def _require_db(self) -> None:
+        if self._db is None or self._user_id is None:
+            raise RuntimeError(
+                "OpenBankingProvider requires a database session and user_id. "
+                "Use OpenBankingProvider(db=session, user_id=id)."
+            )
 
     def get_accounts(self) -> list[Account]:
-        raise NotImplementedError(
-            f"Open Banking ({self._provider}) not yet implemented. "
-            "See roadmap v6.0-02 for the planned integration."
-        )
+        self._require_db()
+        from api.banking.crud import list_user_accounts
+        rows = list_user_accounts(self._db, self._user_id)
+        return [
+            Account(
+                account_id=str(r["id"]),
+                name=r.get("display_name") or f"Account {r['id']}",
+                institution=r.get("institution") or self._provider,
+                account_type=r.get("account_type", "current"),
+                currency=r.get("currency", "GBP"),
+                balance=r.get("balance"),
+            )
+            for r in rows
+        ]
 
     def get_transactions(
         self,
@@ -201,19 +220,30 @@ class OpenBankingProvider(AccountProvider):
         from_date: date | None = None,
         to_date: date | None = None,
     ) -> TransactionPage:
-        raise NotImplementedError(
-            f"Open Banking ({self._provider}) not yet implemented. "
-            "See roadmap v6.0-02 for the planned integration."
-        )
+        self._require_db()
+        from api.banking.crud import list_transactions as list_bank_txns
+        rows = list_bank_txns(self._db, int(account_id), limit=10000)
+        txns = []
+        for r in rows:
+            txn_date = None
+            if r.get("timestamp"):
+                from datetime import datetime as dt
+                ts = r["timestamp"]
+                if isinstance(ts, str):
+                    txn_date = dt.fromisoformat(ts).date()
+                else:
+                    txn_date = ts.date() if hasattr(ts, "date") else None
 
-    def connect(self) -> None:
-        raise NotImplementedError(
-            f"Open Banking ({self._provider}) requires OAuth consent flow. "
-            "See roadmap v6.0-02."
-        )
+            if from_date and txn_date and txn_date < from_date:
+                continue
+            if to_date and txn_date and txn_date > to_date:
+                continue
 
-    def refresh(self, account_id: str) -> None:
-        raise NotImplementedError(
-            f"Open Banking ({self._provider}) not yet implemented. "
-            "See roadmap v6.0-02."
-        )
+            txns.append(Transaction(
+                txn_date=txn_date or date.today(),
+                description=r.get("description", ""),
+                amount=r.get("amount", 0.0),
+                bank=self._provider,
+                category=r.get("category"),
+            ))
+        return TransactionPage(transactions=txns, total_count=len(txns))
