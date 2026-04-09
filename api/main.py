@@ -27,6 +27,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
+from api.banking.router import router as banking_router
 from api.database import crud
 from api.database.models import User
 from api.database.session import get_db, init_db
@@ -50,6 +51,9 @@ from api.models import (
     ValidateResponse,
     ValidationFlag,
 )
+from api.notifications.router import router as notifications_router
+from api.websocket import router as ws_router
+from api.whatif import router as whatif_router
 
 logger = logging.getLogger(__name__)
 
@@ -109,17 +113,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Banking router (v6.0-02)
-from api.banking.router import router as banking_router
 app.include_router(banking_router)
-
-# WebSocket router (v6.0-03)
-from api.websocket import router as ws_router
 app.include_router(ws_router)
-
-# What-If Explorer router (v6.0-04)
-from api.whatif import router as whatif_router
 app.include_router(whatif_router)
+app.include_router(notifications_router)
 
 
 # ---------------------------------------------------------------------------

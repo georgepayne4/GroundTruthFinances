@@ -10,6 +10,7 @@ See `roadmap.md` for the full v5+ plan.
 - Conventional commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`
 - Single-line messages. No co-author trailers. No multi-line bodies.
 - Never commit broken code. Run `python main.py` against `config/sample_input.yaml` before committing.
+- **Before every push**: run `ruff check .` (entire codebase) and `python -m pytest --tb=short -q`. CI runs both — push only when both pass locally.
 - Group related changes into logical commits. Don't split one feature across commits unless necessary.
 
 ## File Rules
@@ -34,6 +35,11 @@ See `roadmap.md` for the full v5+ plan.
 - Python is the current engine language but not a constraint. If another language or tool is demonstrably better for a component (e.g., TypeScript for web frontend, Rust for computation-heavy simulation, Go for API performance), use it with justification.
 - Justify means: state what Python lacks and what the alternative provides. No change for novelty.
 - The engine core should remain cohesive — don't fragment into 5 languages. But a polyglot stack with clear boundaries (e.g., Python engine + TypeScript UI + Go API gateway) is fine.
+
+## Tooling Notes
+
+- `gh` CLI is not installed. Use `git` commands and the GitHub API via `curl`/`httpx` for any GitHub operations (checking CI status, creating PRs, etc.).
+- CI status can be checked via: `curl -s -H "Accept: application/vnd.github+json" https://api.github.com/repos/georgepayne4/GroundTruthFinances/actions/runs?per_page=3`
 
 ## Deprecation Policy
 
