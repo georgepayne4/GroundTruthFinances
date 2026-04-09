@@ -113,6 +113,10 @@ app.add_middleware(
 from api.banking.router import router as banking_router
 app.include_router(banking_router)
 
+# WebSocket router (v6.0-03)
+from api.websocket import router as ws_router
+app.include_router(ws_router)
+
 
 # ---------------------------------------------------------------------------
 # Middleware: audit logging + rate limiting
