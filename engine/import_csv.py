@@ -697,6 +697,28 @@ def aggregate_to_expenses(
     return expenses
 
 
+def aggregate_monthly_totals(
+    transactions: list[Transaction],
+) -> dict[str, dict[str, float]]:
+    """v5.2-09: Monthly totals per category for trend detection.
+
+    Returns {YYYY-MM: {category: total_outflow, ...}, ...}. Only outflows
+    with a category assigned are included. Months are sorted ascending.
+    """
+    monthly: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
+    for txn in transactions:
+        if txn.amount >= 0 or not txn.category:
+            continue
+        month_key = txn.txn_date.strftime("%Y-%m")
+        monthly[month_key][txn.category] += abs(txn.amount)
+
+    # Round values
+    result: dict[str, dict[str, float]] = {}
+    for month in sorted(monthly):
+        result[month] = {cat: round(val, 2) for cat, val in monthly[month].items()}
+    return result
+
+
 def import_bank_csv(
     path: str | Path, rules_path: str | Path | None = None,
 ) -> dict[str, Any]:
@@ -723,9 +745,11 @@ def import_bank_csv(
     recurring = detect_recurring_transactions(transactions)
     subscriptions = detect_subscriptions(transactions, recurring)
     committed = detect_committed_outflows(transactions)
+    monthly_totals = aggregate_monthly_totals(transactions)
 
     return {
         "expenses": expenses,
+        "monthly_totals": monthly_totals,
         "income_transactions": [
             {
                 "date": t.txn_date.isoformat(),

@@ -135,6 +135,7 @@ def merge_bank_data(
         "recurring_transactions": bank_result.get("recurring_transactions", []),
         "subscriptions": bank_result.get("subscriptions", []),
         "committed_outflows": bank_result.get("committed_outflows", []),
+        "monthly_totals": bank_result.get("monthly_totals", {}),
     }
     logger.info(
         "Merged bank data: %d field overrides, %d supplements, income_inferred=%s",

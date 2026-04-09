@@ -78,6 +78,7 @@ def generate_insights(
         "review_schedule": _generate_review_triggers(profile, cashflow, debt_analysis, goal_analysis, scoring),
         "subscription_insights": _subscription_insights(profile, cashflow),
         "income_verification": _income_verification_insight(profile),
+        "expense_micro_insights": _expense_micro_insights(profile, cashflow),
     }
 
     return insights
@@ -163,6 +164,163 @@ def _income_verification_insight(profile: dict) -> dict[str, Any]:
         "source_count": iv.get("source_count", 0),
         "messages": iv.get("messages", []),
     }
+
+
+def _expense_micro_insights(profile: dict, cashflow: dict) -> dict[str, Any]:
+    """v5.2-09: Per-category deep expense analysis.
+
+    Produces category-specific intelligence and, when bank CSV data is
+    available, month-on-month trend flags. Falls back to static declared-
+    expense analysis when no bank data exists.
+    """
+    expenses = profile.get("expenses", {}) or {}
+    personal = profile.get("personal", {}) or {}
+    bank = profile.get("_bank_import", {}) or {}
+    monthly_totals: dict[str, dict[str, float]] = bank.get("monthly_totals", {}) or {}
+    net_monthly = cashflow.get("net_income", {}).get("monthly", 0) or 0
+    dependents = personal.get("dependents", 0)
+
+    categories: dict[str, dict[str, Any]] = {}
+    messages: list[str] = []
+
+    # --- Housing ---
+    housing = expenses.get("housing", {}) or {}
+    rent = housing.get("rent_monthly", 0) or 0
+    mortgage_pmt = housing.get("mortgage_monthly", 0) or 0
+    housing_cost = rent or mortgage_pmt
+    if housing_cost > 0 and net_monthly > 0:
+        housing_pct = round(housing_cost / net_monthly * 100, 1)
+        cat_data: dict[str, Any] = {"monthly": housing_cost, "pct_of_net": housing_pct}
+        if housing_pct > 35:
+            messages.append(
+                f"Housing costs are {housing_pct:.0f}% of net income - above the "
+                f"recommended 30-35% ceiling. This limits your capacity for other goals.",
+            )
+        if rent > 0 and not mortgage_pmt:
+            cat_data["renting"] = True
+            messages.append(
+                f"You are paying {rent:,.0f}/month in rent. Over 5 years that is "
+                f"{rent * 60:,.0f} with no equity built. Compare against mortgage "
+                f"options if home ownership is a goal.",
+            )
+        council_tax = housing.get("council_tax_monthly", 0) or 0
+        if council_tax > 0:
+            cat_data["council_tax_monthly"] = council_tax
+        categories["housing"] = cat_data
+
+    # --- Transport ---
+    transport = expenses.get("transport", {}) or {}
+    car = (transport.get("car_payment_monthly", 0) or 0) + (transport.get("fuel_monthly", 0) or 0)
+    public = transport.get("public_transport_monthly", 0) or 0
+    transport_total = car + public
+    if transport_total > 0:
+        cat_data = {"monthly": round(transport_total, 2)}
+        if car > 0 and public > 0:
+            messages.append(
+                f"You spend {car:,.0f}/mo on car costs and {public:,.0f}/mo on "
+                f"public transport. If the car is primarily for commuting, evaluate "
+                f"whether one mode could replace the other.",
+            )
+        elif car > 250:
+            messages.append(
+                f"Car costs of {car:,.0f}/month are significant. Consider whether "
+                f"cycling, car-sharing, or public transport could reduce this.",
+            )
+        categories["transport"] = cat_data
+
+    # --- Living ---
+    living = expenses.get("living", {}) or {}
+    groceries = living.get("groceries_monthly", 0) or 0
+    dining = living.get("dining_out_monthly", 0) or 0
+    if groceries > 0:
+        household_size = 1 + dependents
+        per_person = round(groceries / household_size, 2)
+        cat_data = {
+            "groceries_monthly": groceries,
+            "per_person_monthly": per_person,
+            "household_size": household_size,
+        }
+        if per_person > 300:
+            messages.append(
+                f"Grocery spend is {per_person:,.0f}/person/month - above UK average "
+                f"(~250). Meal planning and batch cooking could save 50-80/month.",
+            )
+        if dining > 0:
+            food_total = groceries + dining
+            dining_pct = round(dining / food_total * 100, 1)
+            cat_data["dining_monthly"] = dining
+            cat_data["dining_pct_of_food"] = dining_pct
+            if dining_pct > 40:
+                messages.append(
+                    f"Dining out is {dining_pct:.0f}% of your total food spend. "
+                    f"Shifting some meals to home cooking could save {dining * 0.3:,.0f}/month.",
+                )
+        categories["living"] = cat_data
+
+    # --- Subscriptions (from v5.2-06) ---
+    subs = bank.get("subscriptions", []) or []
+    if subs:
+        sub_total = round(sum(s.get("monthly_cost", 0) for s in subs), 2)
+        categories["subscriptions"] = {
+            "count": len(subs),
+            "monthly_total": sub_total,
+            "annual_total": round(sub_total * 12, 2),
+        }
+
+    # --- Trend detection (from bank monthly totals) ---
+    trends: dict[str, str] = {}
+    if len(monthly_totals) >= 3:
+        all_cats = set()
+        for m in monthly_totals.values():
+            all_cats.update(m.keys())
+        for cat in all_cats:
+            values = [monthly_totals[m].get(cat, 0) for m in sorted(monthly_totals)]
+            trend = _detect_trend(values)
+            if trend:
+                trends[cat] = trend
+                if trend == "rising":
+                    messages.append(
+                        f"'{cat}' spending has been rising over recent months - "
+                        f"review whether this is intentional.",
+                    )
+
+    result: dict[str, Any] = {
+        "applicable": bool(categories),
+        "categories": categories,
+        "trends": trends,
+        "messages": messages,
+    }
+    if net_monthly > 0:
+        total_discretionary = dining + (living.get("clothing_monthly", 0) or 0) + (
+            living.get("personal_care_monthly", 0) or 0
+        )
+        subs_total = sum(s.get("monthly_cost", 0) for s in subs) if subs else (
+            living.get("subscriptions_monthly", 0) or 0
+        )
+        total_discretionary += subs_total
+        result["discretionary_monthly"] = round(total_discretionary, 2)
+        result["discretionary_pct_of_net"] = round(total_discretionary / net_monthly * 100, 1)
+
+    return result
+
+
+def _detect_trend(values: list[float]) -> str | None:
+    """Classify a sequence of monthly values as rising, falling, or None.
+
+    Uses a simple linear check: if the last value is >15% above the first,
+    it's rising. If >15% below, falling. Otherwise no clear trend.
+    """
+    if len(values) < 3:
+        return None
+    first, last = values[0], values[-1]
+    if first == 0:
+        return "rising" if last > 0 else None
+    change_pct = (last - first) / first
+    if change_pct > 0.15:
+        return "rising"
+    if change_pct < -0.15:
+        return "falling"
+    return None
 
 
 # ---------------------------------------------------------------------------

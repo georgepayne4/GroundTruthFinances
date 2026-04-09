@@ -374,6 +374,20 @@ def main() -> None:
         for msg in sub_insight.get("messages", []):
             print(f"  {msg}")
 
+    # v5.2-09: Print expense micro-insights
+    micro = insights_result.get("expense_micro_insights", {})
+    if micro.get("applicable") and micro.get("messages"):
+        print(f"\n{'=' * 60}")
+        print("EXPENSE INSIGHTS")
+        print(f"{'=' * 60}")
+        for msg in micro["messages"]:
+            print(f"  - {msg}")
+        trends = micro.get("trends", {})
+        if trends:
+            for cat, direction in trends.items():
+                if direction != "rising":
+                    print(f"  - '{cat}' spending is {direction}")
+
     # Print top priorities
     priorities = insights_result.get("top_priorities", [])
     if priorities:
