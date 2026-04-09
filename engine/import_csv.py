@@ -501,6 +501,155 @@ def detect_committed_outflows(
     return results
 
 
+def verify_income(
+    income_transactions: list[Transaction] | list[dict[str, Any]],
+    declared_gross_annual: float | None,
+) -> dict[str, Any]:
+    """v5.2-08: Cross-reference declared salary with observed bank credits.
+
+    Takes the income transactions detected by detect_income_transactions
+    (Transaction objects or serialised dicts with 'description' and 'amount')
+    and the declared primary_gross_annual from the profile. Returns a
+    verification dict with:
+      - match_status: "match" | "discrepancy" | "unverifiable"
+      - observed_annual: estimated annual from bank credits (net pay * 12)
+      - declared_annual: what the profile says
+      - discrepancy_pct: signed percentage (positive = bank > declared)
+      - income_regularity: "regular" | "variable" | "insufficient_data"
+      - source_count: how many distinct payroll sources detected
+      - sources: list of {description, monthly_amount, occurrences}
+      - messages: human-readable findings
+    """
+    if not income_transactions:
+        return {
+            "match_status": "unverifiable",
+            "observed_annual": None,
+            "declared_annual": declared_gross_annual,
+            "discrepancy_pct": None,
+            "income_regularity": "insufficient_data",
+            "source_count": 0,
+            "sources": [],
+            "messages": ["No salary credits detected in bank data — income could not be verified."],
+        }
+
+    # Normalise inputs: accept both Transaction objects and serialised dicts
+    def _desc(t: Any) -> str:
+        return t.description if isinstance(t, Transaction) else t.get("description", "")
+
+    def _amt(t: Any) -> float:
+        return t.amount if isinstance(t, Transaction) else float(t.get("amount", 0))
+
+    # Group by normalised payer description to detect multiple sources
+    groups: dict[str, list[Any]] = defaultdict(list)
+    for txn in income_transactions:
+        key = _normalise_merchant(_desc(txn))
+        groups[key].append(txn)
+
+    sources: list[dict[str, Any]] = []
+    total_monthly = 0.0
+    for key, txns in groups.items():
+        amounts = [_amt(t) for t in txns]
+        mean = sum(amounts) / len(amounts)
+        sources.append({
+            "description": _desc(txns[0]),
+            "merchant_key": key,
+            "monthly_amount": round(mean, 2),
+            "occurrences": len(txns),
+        })
+        total_monthly += mean
+
+    sources.sort(key=lambda s: s["monthly_amount"], reverse=True)
+    observed_annual = round(total_monthly * 12, 2)
+
+    # Regularity: check if amounts from the primary source are stable
+    primary_key = max(groups, key=lambda k: sum(_amt(t) for t in groups[k]))
+    primary_amounts = [_amt(t) for t in groups[primary_key]]
+    regularity = _assess_income_regularity_from_amounts(primary_amounts)
+
+    messages: list[str] = []
+    match_status = "unverifiable"
+    discrepancy_pct: float | None = None
+
+    if declared_gross_annual and declared_gross_annual > 0:
+        # Bank credits are net pay. Rough gross-up: net * 1.0 vs declared
+        # net. We can't perfectly gross up, so we compare observed net*12
+        # against a rough expected net derived from declared gross.
+        # Simpler approach: just report the observed vs declared and note
+        # that bank credits are net (after tax/NI/pension).
+        discrepancy_pct = round(
+            ((observed_annual - declared_gross_annual) / declared_gross_annual) * 100, 1,
+        )
+        # Bank credits are net pay, so observed will normally be lower than
+        # declared gross. A "match" means observed is 50-80% of gross
+        # (reasonable net/gross ratio for UK taxpayers).
+        ratio = observed_annual / declared_gross_annual
+        if 0.50 <= ratio <= 0.85:
+            match_status = "match"
+            messages.append(
+                f"Bank salary credits ({observed_annual:,.0f}/yr net) are consistent "
+                f"with declared gross income ({declared_gross_annual:,.0f}/yr).",
+            )
+        elif ratio < 0.50:
+            match_status = "discrepancy"
+            messages.append(
+                f"Bank salary credits ({observed_annual:,.0f}/yr net) appear low "
+                f"relative to declared gross ({declared_gross_annual:,.0f}/yr). "
+                f"Check for missing months, salary sacrifice, or incorrect declaration.",
+            )
+        else:
+            match_status = "discrepancy"
+            messages.append(
+                f"Bank credits ({observed_annual:,.0f}/yr) exceed expected net for "
+                f"declared gross ({declared_gross_annual:,.0f}/yr). "
+                f"This may include bonuses, side income, or an under-declared salary.",
+            )
+    else:
+        messages.append(
+            f"No declared income to verify against. "
+            f"Observed bank salary credits suggest ~{observed_annual:,.0f}/yr (net).",
+        )
+
+    if len(sources) > 1:
+        messages.append(
+            f"Multiple income sources detected ({len(sources)}): "
+            + ", ".join(f"'{s['description']}' ({s['monthly_amount']:,.0f}/mo)" for s in sources[:3])
+            + ".",
+        )
+
+    if regularity == "variable":
+        messages.append(
+            "Income amounts vary significantly month to month — "
+            "consider budgeting on the lower observed amount.",
+        )
+
+    return {
+        "match_status": match_status,
+        "observed_annual": observed_annual,
+        "declared_annual": declared_gross_annual,
+        "discrepancy_pct": discrepancy_pct,
+        "income_regularity": regularity,
+        "source_count": len(sources),
+        "sources": sources,
+        "messages": messages,
+    }
+
+
+def _assess_income_regularity_from_amounts(amounts: list[float]) -> str:
+    """Classify income regularity from a list of salary amounts.
+
+    Returns 'regular' if amounts are within 5% of the mean,
+    'variable' otherwise, or 'insufficient_data' if < 2 values.
+    """
+    if len(amounts) < 2:
+        return "insufficient_data"
+    mean = sum(amounts) / len(amounts)
+    if mean == 0:
+        return "insufficient_data"
+    if all(abs(a - mean) / mean <= 0.05 for a in amounts):
+        return "regular"
+    return "variable"
+
+
 def aggregate_to_expenses(
     transactions: list[Transaction], months: int | None = None,
 ) -> dict[str, dict[str, float]]:

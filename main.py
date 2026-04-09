@@ -130,6 +130,11 @@ def main() -> None:
         if bi.get("committed_outflows"):
             co_total = bsum.get("committed_outflow_monthly_total", 0)
             print(f"  DD/SO committed:    {len(bi['committed_outflows'])} payees, {co_total:,.2f}/mo total")
+        iv = bi.get("income_verification", {})
+        if iv.get("match_status") and iv["match_status"] != "unverifiable":
+            status = iv["match_status"]
+            obs = iv.get("observed_annual") or 0
+            print(f"  Income verified:    {status} (observed net {obs:,.0f}/yr, {iv.get('income_regularity', '?')})")
 
     name = profile.get("personal", {}).get("name", "Unknown")
     print(f"\nAnalysing financial profile for: {name}")

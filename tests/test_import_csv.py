@@ -11,6 +11,7 @@ from engine.import_csv import (
     BANK_FORMATS,
     ImportCsvError,
     Transaction,
+    _assess_income_regularity_from_amounts,
     _classify_cadence,
     _detect_format,
     _is_known_subscription_merchant,
@@ -28,6 +29,7 @@ from engine.import_csv import (
     import_bank_csv,
     load_category_rules,
     parse_csv,
+    verify_income,
 )
 from engine.loader import merge_bank_data
 
@@ -1001,3 +1003,153 @@ class TestDetectCommittedOutflows:
         assert "committed_outflows" in result
         assert result["summary"]["committed_outflow_count"] >= 1
         assert result["summary"]["committed_outflow_monthly_total"] >= 85.00
+
+
+# ---------------------------------------------------------------------------
+# v5.2-08: Income verification
+# ---------------------------------------------------------------------------
+
+def _salary_txns(amount: float = 2500.0, months: int = 3, desc: str = "SALARY ACME LTD") -> list[Transaction]:
+    return [
+        Transaction(date(2026, 1 + i, 5), desc, amount, "monzo")
+        for i in range(months)
+    ]
+
+
+class TestIncomeRegularity:
+    def test_regular_amounts(self):
+        assert _assess_income_regularity_from_amounts([2500, 2500, 2500]) == "regular"
+
+    def test_variable_amounts(self):
+        assert _assess_income_regularity_from_amounts([2500, 3500, 1800]) == "variable"
+
+    def test_insufficient_data(self):
+        assert _assess_income_regularity_from_amounts([2500]) == "insufficient_data"
+
+    def test_empty(self):
+        assert _assess_income_regularity_from_amounts([]) == "insufficient_data"
+
+    def test_within_5pct_tolerance(self):
+        # 2500 * 1.04 = 2600, within 5%
+        assert _assess_income_regularity_from_amounts([2500, 2600, 2550]) == "regular"
+
+    def test_just_outside_5pct(self):
+        # mean of [2000, 2500] = 2250; |2500-2250|/2250 = 11.1% → variable
+        assert _assess_income_regularity_from_amounts([2000, 2500]) == "variable"
+
+
+class TestVerifyIncome:
+    def test_no_transactions_unverifiable(self):
+        result = verify_income([], 50000)
+        assert result["match_status"] == "unverifiable"
+        assert result["observed_annual"] is None
+        assert result["source_count"] == 0
+
+    def test_match_reasonable_net_to_gross_ratio(self):
+        # 3500 net/mo * 12 = 42000 net. For 60000 gross, ratio = 0.70 → match
+        txns = _salary_txns(amount=3500.0, months=3)
+        result = verify_income(txns, 60000)
+        assert result["match_status"] == "match"
+        assert result["observed_annual"] == 42000.0
+        assert result["income_regularity"] == "regular"
+
+    def test_discrepancy_low_observed(self):
+        # 1500 net/mo * 12 = 18000. For 60000 gross, ratio = 0.30 → too low
+        txns = _salary_txns(amount=1500.0, months=3)
+        result = verify_income(txns, 60000)
+        assert result["match_status"] == "discrepancy"
+        assert any("low" in m for m in result["messages"])
+
+    def test_discrepancy_high_observed(self):
+        # 5000 net/mo * 12 = 60000. For 60000 gross, ratio = 1.0 → too high
+        txns = _salary_txns(amount=5000.0, months=3)
+        result = verify_income(txns, 60000)
+        assert result["match_status"] == "discrepancy"
+        assert any("exceed" in m for m in result["messages"])
+
+    def test_no_declared_income(self):
+        txns = _salary_txns(amount=3000.0, months=3)
+        result = verify_income(txns, None)
+        assert result["match_status"] == "unverifiable"
+        assert result["observed_annual"] == 36000.0
+        assert any("No declared income" in m for m in result["messages"])
+
+    def test_multiple_sources_detected(self):
+        txns = [
+            *_salary_txns(amount=2500.0, months=3, desc="SALARY ACME"),
+            *_salary_txns(amount=500.0, months=3, desc="FREELANCE WAGES CLIENT"),
+        ]
+        result = verify_income(txns, 50000)
+        assert result["source_count"] == 2
+        assert any("Multiple income sources" in m for m in result["messages"])
+
+    def test_variable_income_flagged(self):
+        txns = [
+            Transaction(date(2026, 1, 5), "SALARY ACME WAGES", 2500.0, "monzo"),
+            Transaction(date(2026, 2, 5), "SALARY ACME WAGES", 3500.0, "monzo"),
+            Transaction(date(2026, 3, 5), "SALARY ACME WAGES", 1800.0, "monzo"),
+        ]
+        result = verify_income(txns, 40000)
+        assert result["income_regularity"] == "variable"
+        assert any("vary" in m for m in result["messages"])
+
+    def test_accepts_serialised_dicts(self):
+        dicts = [
+            {"date": "2026-01-05", "description": "SALARY ACME LTD", "amount": 3000.0},
+            {"date": "2026-02-05", "description": "SALARY ACME LTD", "amount": 3000.0},
+        ]
+        result = verify_income(dicts, 50000)
+        assert result["match_status"] in ("match", "discrepancy")
+        assert result["observed_annual"] == 36000.0
+
+    def test_zero_declared_treated_as_missing(self):
+        txns = _salary_txns(amount=3000.0, months=3)
+        result = verify_income(txns, 0)
+        assert result["match_status"] == "unverifiable"
+
+
+class TestIncomeVerificationInsight:
+    def test_no_bank_import_returns_empty(self):
+        from engine.insights import _income_verification_insight
+        assert _income_verification_insight({}) == {}
+
+    def test_unverifiable_returns_empty(self):
+        from engine.insights import _income_verification_insight
+        profile = {"_bank_import": {"income_verification": {"match_status": "unverifiable"}}}
+        assert _income_verification_insight(profile) == {}
+
+    def test_match_returns_applicable(self):
+        from engine.insights import _income_verification_insight
+        profile = {
+            "_bank_import": {
+                "income_verification": {
+                    "match_status": "match",
+                    "observed_annual": 42000,
+                    "declared_annual": 60000,
+                    "income_regularity": "regular",
+                    "source_count": 1,
+                    "messages": ["Consistent."],
+                },
+            },
+        }
+        result = _income_verification_insight(profile)
+        assert result["applicable"] is True
+        assert result["match_status"] == "match"
+
+    def test_discrepancy_surfaces(self):
+        from engine.insights import _income_verification_insight
+        profile = {
+            "_bank_import": {
+                "income_verification": {
+                    "match_status": "discrepancy",
+                    "observed_annual": 18000,
+                    "declared_annual": 60000,
+                    "income_regularity": "regular",
+                    "source_count": 1,
+                    "messages": ["Appears low."],
+                },
+            },
+        }
+        result = _income_verification_insight(profile)
+        assert result["applicable"] is True
+        assert result["match_status"] == "discrepancy"

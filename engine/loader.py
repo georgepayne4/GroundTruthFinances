@@ -16,6 +16,7 @@ from typing import Any
 import yaml
 
 from engine.exceptions import AssumptionError, ProfileError
+from engine.import_csv import verify_income
 from engine.schemas import validate_assumptions
 
 logger = logging.getLogger(__name__)
@@ -117,6 +118,11 @@ def merge_bank_data(
                 "annual_estimate": inferred_annual,
             }
 
+    # v5.2-08: income verification — cross-check declared vs observed
+    declared_gross = income_block.get("primary_gross_annual")
+    income_txns = bank_result.get("income_transactions") or []
+    income_verification = verify_income(income_txns, declared_gross)
+
     # Re-normalise so downstream modules see fresh totals
     merged = _normalise_profile(merged)
 
@@ -125,6 +131,7 @@ def merge_bank_data(
         "expense_fields_overridden": overridden,
         "expense_fields_supplemented": supplemented,
         "income_inferred": income_inferred,
+        "income_verification": income_verification,
         "recurring_transactions": bank_result.get("recurring_transactions", []),
         "subscriptions": bank_result.get("subscriptions", []),
         "committed_outflows": bank_result.get("committed_outflows", []),

@@ -77,6 +77,7 @@ def generate_insights(
         "recommended_next_steps": _next_steps(scoring, debt_analysis, goal_analysis, mortgage_analysis),
         "review_schedule": _generate_review_triggers(profile, cashflow, debt_analysis, goal_analysis, scoring),
         "subscription_insights": _subscription_insights(profile, cashflow),
+        "income_verification": _income_verification_insight(profile),
     }
 
     return insights
@@ -140,6 +141,27 @@ def _subscription_insights(profile: dict, cashflow: dict) -> dict[str, Any]:
             for s in subs
         ],
         "messages": messages,
+    }
+
+
+def _income_verification_insight(profile: dict) -> dict[str, Any]:
+    """v5.2-08: Surface income verification findings from bank data.
+
+    Reads from profile['_bank_import']['income_verification'] (populated
+    by merge_bank_data). Returns an empty dict when no bank data is available.
+    """
+    bank = profile.get("_bank_import", {}) or {}
+    iv: dict[str, Any] = bank.get("income_verification", {}) or {}
+    if not iv or iv.get("match_status") == "unverifiable":
+        return {}
+    return {
+        "applicable": True,
+        "match_status": iv["match_status"],
+        "observed_annual": iv.get("observed_annual"),
+        "declared_annual": iv.get("declared_annual"),
+        "income_regularity": iv.get("income_regularity"),
+        "source_count": iv.get("source_count", 0),
+        "messages": iv.get("messages", []),
     }
 
 
