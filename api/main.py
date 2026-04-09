@@ -1,7 +1,7 @@
-"""api/main.py — FastAPI application for the GroundTruth engine (v5.3-01).
+"""api/main.py — FastAPI application for the GroundTruth engine (v5.3-02).
 
-Exposes the engine as a stateless REST API. All financial analysis modules
-are pure functions, so the API is trivially parallel.
+Exposes the engine as a stateless REST API with optional database-backed
+profile storage and run history.
 
 Run with:  uvicorn api.main:app --reload
 """
@@ -9,13 +9,17 @@ Run with:  uvicorn api.main:app --reload
 from __future__ import annotations
 
 import logging
+from contextlib import asynccontextmanager
 from typing import Any
 
+import yaml
 from fastapi import Depends, FastAPI, Query
+from sqlalchemy.orm import Session
 
+from api.database import crud
+from api.database.session import get_db, init_db
 from api.dependencies import (
     get_default_assumptions_path,
-    get_default_history_db,
     verify_api_key,
 )
 from api.models import (
@@ -24,6 +28,8 @@ from api.models import (
     ErrorResponse,
     HistoryResponse,
     HistoryRun,
+    ProfileCreateRequest,
+    ProfileResponse,
     ValidateRequest,
     ValidateResponse,
     ValidationFlag,
@@ -31,13 +37,26 @@ from api.models import (
 
 logger = logging.getLogger(__name__)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Create database tables on startup (dev/test mode)."""
+    init_db()
+    yield
+
+
 app = FastAPI(
     title="GroundTruth Financial Planning API",
-    version="5.3.0",
+    version="5.3.2",
     description="Advisor-grade UK financial planning engine.",
     responses={401: {"model": ErrorResponse}},
+    lifespan=lifespan,
 )
 
+
+# ---------------------------------------------------------------------------
+# Analysis endpoints
+# ---------------------------------------------------------------------------
 
 @app.post(
     "/api/v1/analyse",
@@ -45,9 +64,12 @@ app = FastAPI(
     summary="Run full analysis pipeline",
     dependencies=[Depends(verify_api_key)],
 )
-async def analyse(request: AnalyseRequest) -> AnalyseResponse:
+async def analyse(
+    request: AnalyseRequest,
+    db: Session = Depends(get_db),
+) -> AnalyseResponse:
     """Accept a JSON profile, run the full 15-stage pipeline, return the report."""
-    report, _profile, run_id = _run_pipeline(request.profile, request.assumptions)
+    report, _profile, run_id = _run_pipeline(request.profile, request.assumptions, db=db)
     scoring = report.get("scoring", {})
     meta = report.get("meta", {})
     return AnalyseResponse(
@@ -90,6 +112,10 @@ async def validate(request: ValidateRequest) -> ValidateResponse:
     )
 
 
+# ---------------------------------------------------------------------------
+# Assumptions
+# ---------------------------------------------------------------------------
+
 @app.get(
     "/api/v1/assumptions",
     summary="Return current server assumptions",
@@ -101,6 +127,64 @@ async def get_assumptions() -> dict[str, Any]:
     return load_assumptions(get_default_assumptions_path())
 
 
+# ---------------------------------------------------------------------------
+# Profile management (new in v5.3-02)
+# ---------------------------------------------------------------------------
+
+@app.post(
+    "/api/v1/profiles",
+    response_model=ProfileResponse,
+    summary="Create or update a named profile",
+    dependencies=[Depends(verify_api_key)],
+)
+async def create_profile(
+    request: ProfileCreateRequest,
+    db: Session = Depends(get_db),
+) -> ProfileResponse:
+    """Store a profile in the database. Creates a default user if needed."""
+    user = crud.get_or_create_user(db, email=request.user_email, name=request.user_name)
+    yaml_content = yaml.dump(request.profile, default_flow_style=False)
+    profile = crud.create_profile(db, user_id=user.id, name=request.profile_name, yaml_content=yaml_content)
+    return ProfileResponse(
+        id=profile.id,
+        user_id=profile.user_id,
+        name=profile.name,
+        created_at=profile.created_at.isoformat() if profile.created_at else None,
+        updated_at=profile.updated_at.isoformat() if profile.updated_at else None,
+    )
+
+
+@app.get(
+    "/api/v1/profiles",
+    response_model=list[ProfileResponse],
+    summary="List profiles for a user",
+    dependencies=[Depends(verify_api_key)],
+)
+async def list_profiles(
+    user_email: str = Query(..., description="User email to list profiles for"),
+    db: Session = Depends(get_db),
+) -> list[ProfileResponse]:
+    """Return all profiles belonging to a user."""
+    user = crud.get_user_by_email(db, email=user_email)
+    if user is None:
+        return []
+    profiles = crud.list_profiles(db, user_id=user.id)
+    return [
+        ProfileResponse(
+            id=p.id,
+            user_id=p.user_id,
+            name=p.name,
+            created_at=p.created_at.isoformat() if p.created_at else None,
+            updated_at=p.updated_at.isoformat() if p.updated_at else None,
+        )
+        for p in profiles
+    ]
+
+
+# ---------------------------------------------------------------------------
+# History (now backed by SQLAlchemy)
+# ---------------------------------------------------------------------------
+
 @app.get(
     "/api/v1/history/{profile_name}",
     response_model=HistoryResponse,
@@ -110,16 +194,10 @@ async def get_assumptions() -> dict[str, Any]:
 async def get_history(
     profile_name: str,
     limit: int = Query(10, ge=1, le=100),
+    db: Session = Depends(get_db),
 ) -> HistoryResponse:
     """Return recent runs for the given profile name."""
-    from engine.history import HistoryError, list_runs
-
-    db_path = get_default_history_db()
-    try:
-        runs = list_runs(db_path, limit=limit, profile_name=profile_name)
-    except HistoryError:
-        return HistoryResponse(runs=[], count=0)
-
+    runs = crud.list_runs(db, limit=limit, profile_name=profile_name)
     return HistoryResponse(
         runs=[HistoryRun(**r) for r in runs],
         count=len(runs),
@@ -134,16 +212,10 @@ async def get_history(
 )
 async def get_all_history(
     limit: int = Query(10, ge=1, le=100),
+    db: Session = Depends(get_db),
 ) -> HistoryResponse:
     """Return recent runs across all profiles."""
-    from engine.history import HistoryError, list_runs
-
-    db_path = get_default_history_db()
-    try:
-        runs = list_runs(db_path, limit=limit)
-    except HistoryError:
-        return HistoryResponse(runs=[], count=0)
-
+    runs = crud.list_runs(db, limit=limit)
     return HistoryResponse(
         runs=[HistoryRun(**r) for r in runs],
         count=len(runs),
@@ -157,13 +229,13 @@ async def get_all_history(
 def _run_pipeline(
     raw_profile: dict[str, Any],
     assumptions_override: dict[str, Any] | None = None,
+    db: Session | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], int | None]:
     """Run the full engine pipeline. Returns (report, profile, run_id)."""
     from engine.cashflow import analyse_cashflow
     from engine.debt import analyse_debt
     from engine.estate import analyse_estate
     from engine.goals import analyse_goals
-    from engine.history import HistoryError, record_run
     from engine.insights import generate_insights
     from engine.insurance import assess_insurance
     from engine.investments import analyse_investments
@@ -232,10 +304,10 @@ def _run_pipeline(
     )
 
     run_id = None
-    try:
-        db_path = get_default_history_db()
-        run_id = record_run(report, db_path, profile=profile)
-    except HistoryError:
-        logger.warning("Could not record run in history DB")
+    if db is not None:
+        try:
+            run_id = crud.record_run(db, report, profile=profile)
+        except Exception:
+            logger.warning("Could not record run in database")
 
     return report, profile, run_id

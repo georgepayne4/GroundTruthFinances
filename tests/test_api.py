@@ -1,10 +1,43 @@
-"""Tests for the FastAPI REST API (v5.3-01)."""
+"""Tests for the FastAPI REST API (v5.3-01 + v5.3-02 database integration)."""
 
 from __future__ import annotations
 
-from fastapi.testclient import TestClient
+import os
+
+# Force in-memory SQLite before any app imports
+os.environ["DATABASE_URL"] = "sqlite://"
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from api.database.models import Base
+from api.database.session import get_db
+
+# Single shared in-memory SQLite for all test API calls
+_test_engine = create_engine(
+    "sqlite://",
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
+_TestSession = sessionmaker(bind=_test_engine, autoflush=False, expire_on_commit=False)
+
+Base.metadata.create_all(bind=_test_engine)
+
+
+def _override_get_db():
+    session = _TestSession()
+    try:
+        yield session
+    finally:
+        session.close()
+
 
 from api.main import app
+
+app.dependency_overrides[get_db] = _override_get_db
+
+from fastapi.testclient import TestClient
 
 client = TestClient(app)
 
@@ -127,6 +160,16 @@ class TestAnalyseEndpoint:
         data = resp.json()
         assert data["overall_score"] is not None
 
+    def test_analysis_records_run_id(self):
+        resp = client.post(
+            "/api/v1/analyse",
+            json={"profile": _minimal_profile()},
+            headers=HEADERS,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["run_id"] is not None
+
 
 # ---------------------------------------------------------------------------
 # GET /api/v1/assumptions
@@ -163,6 +206,58 @@ class TestHistoryEndpoint:
     def test_history_limit_param(self):
         resp = client.get("/api/v1/history?limit=1", headers=HEADERS)
         assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Profile management (v5.3-02)
+# ---------------------------------------------------------------------------
+
+class TestProfileEndpoints:
+    def test_create_profile(self):
+        resp = client.post(
+            "/api/v1/profiles",
+            json={
+                "user_email": "test@example.com",
+                "user_name": "Test User",
+                "profile_name": "My Profile",
+                "profile": _minimal_profile(),
+            },
+            headers=HEADERS,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["name"] == "My Profile"
+        assert data["id"] is not None
+        assert data["user_id"] is not None
+
+    def test_list_profiles(self):
+        client.post(
+            "/api/v1/profiles",
+            json={
+                "user_email": "list@example.com",
+                "profile_name": "Profile A",
+                "profile": _minimal_profile(),
+            },
+            headers=HEADERS,
+        )
+        resp = client.get(
+            "/api/v1/profiles",
+            params={"user_email": "list@example.com"},
+            headers=HEADERS,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) >= 1
+        assert data[0]["name"] == "Profile A"
+
+    def test_list_profiles_unknown_user(self):
+        resp = client.get(
+            "/api/v1/profiles",
+            params={"user_email": "nobody@nowhere.com"},
+            headers=HEADERS,
+        )
+        assert resp.status_code == 200
+        assert resp.json() == []
 
 
 # ---------------------------------------------------------------------------

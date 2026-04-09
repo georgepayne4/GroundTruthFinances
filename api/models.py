@@ -72,3 +72,23 @@ class HistoryResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     detail: str
+
+
+# ---------------------------------------------------------------------------
+# Profile management (v5.3-02)
+# ---------------------------------------------------------------------------
+
+class ProfileCreateRequest(BaseModel):
+    """Store a named profile in the database."""
+    user_email: str = Field(..., description="Email address identifying the user")
+    user_name: str | None = Field(None, description="Display name (optional, used on first creation)")
+    profile_name: str = Field(..., description="Name for this profile (unique per user)")
+    profile: dict[str, Any] = Field(..., description="Financial profile data")
+
+
+class ProfileResponse(BaseModel):
+    id: int
+    user_id: int
+    name: str
+    created_at: str | None = None
+    updated_at: str | None = None
