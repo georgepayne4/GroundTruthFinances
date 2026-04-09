@@ -1,4 +1,4 @@
-"""Tests for the SQLAlchemy database layer (v5.3-02)."""
+"""Tests for the SQLAlchemy database layer (v5.3-04)."""
 
 from __future__ import annotations
 
@@ -243,3 +243,76 @@ class TestRunCrud:
             record_run(db, report=_sample_report(), profile=_sample_profile())
         runs = list_runs(db, limit=2)
         assert len(runs) == 2
+
+
+# ---------------------------------------------------------------------------
+# User API key management (v5.3-04)
+# ---------------------------------------------------------------------------
+
+class TestUserApiKeys:
+    def test_set_user_api_key(self, db: Session):
+        from api.database.crud import get_or_create_user, set_user_api_key
+        from api.dependencies import hash_api_key
+
+        user = get_or_create_user(db, email="key@test.com")
+        key_hash = hash_api_key("test-key-123")
+        updated = set_user_api_key(db, user.id, key_hash)
+        assert updated is not None
+        assert updated.api_key_hash == key_hash
+
+    def test_get_user_by_key_hash(self, db: Session):
+        from api.database.crud import get_or_create_user, get_user_by_key_hash
+        from api.dependencies import hash_api_key
+
+        key_hash = hash_api_key("lookup-key")
+        user = get_or_create_user(db, email="lookup@test.com", api_key_hash=key_hash)
+        found = get_user_by_key_hash(db, key_hash)
+        assert found is not None
+        assert found.id == user.id
+
+    def test_get_user_by_key_hash_missing(self, db: Session):
+        from api.database.crud import get_user_by_key_hash
+        from api.dependencies import hash_api_key
+
+        assert get_user_by_key_hash(db, hash_api_key("nonexistent")) is None
+
+    def test_set_user_api_key_nonexistent(self, db: Session):
+        from api.database.crud import set_user_api_key
+
+        assert set_user_api_key(db, 9999, "somehash") is None
+
+
+# ---------------------------------------------------------------------------
+# Audit log (v5.3-04)
+# ---------------------------------------------------------------------------
+
+class TestAuditLog:
+    def test_log_audit(self, db: Session):
+        from api.database.crud import get_or_create_user, log_audit
+
+        user = get_or_create_user(db, email="audit@test.com")
+        entry = log_audit(db, user_id=user.id, endpoint="/api/v1/analyse", method="POST", status_code=200)
+        assert entry.id is not None
+        assert entry.endpoint == "/api/v1/analyse"
+        assert entry.status_code == 200
+
+    def test_log_audit_no_user(self, db: Session):
+        from api.database.crud import log_audit
+
+        entry = log_audit(db, user_id=None, endpoint="/api/v1/validate", method="POST")
+        assert entry.id is not None
+        assert entry.user_id is None
+
+    def test_list_audit_log(self, db: Session):
+        from api.database.crud import get_or_create_user, list_audit_log, log_audit
+
+        user = get_or_create_user(db, email="audit@test.com")
+        log_audit(db, user_id=user.id, endpoint="/api/v1/analyse", method="POST", status_code=200)
+        log_audit(db, user_id=user.id, endpoint="/api/v1/validate", method="POST", status_code=200)
+        log_audit(db, user_id=None, endpoint="/api/v1/assumptions", method="GET", status_code=200)
+
+        all_entries = list_audit_log(db, limit=10)
+        assert len(all_entries) == 3
+
+        user_entries = list_audit_log(db, limit=10, user_id=user.id)
+        assert len(user_entries) == 2

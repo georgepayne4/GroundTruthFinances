@@ -1,11 +1,12 @@
-"""api/database/models.py — SQLAlchemy ORM models (v5.3-02).
+"""api/database/models.py — SQLAlchemy ORM models (v5.3-04).
 
 Schema:
-  users      — API consumers (email-keyed)
+  users      — API consumers (email-keyed, per-user API key)
   profiles   — Stored financial profiles per user
   reports    — Full JSON reports generated from profiles
   assumptions — Versioned assumption sets (tax year keyed)
   runs       — Lightweight metric snapshots (migrated from v5.2-05 SQLite)
+  audit_log  — Who called what endpoint, when (v5.3-04)
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from sqlalchemy import (
+    Boolean,
     Column,
     DateTime,
     Float,
@@ -36,7 +38,8 @@ class User(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
     name = Column(String(255), nullable=True)
-    api_key_hash = Column(String(128), nullable=True)
+    api_key_hash = Column(String(128), nullable=True, index=True)
+    is_admin = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     profiles = relationship("Profile", back_populates="user", cascade="all, delete-orphan")
@@ -115,3 +118,19 @@ class Run(Base):
     high_interest_debt_count = Column(Integer, nullable=True)
     mortgage_readiness = Column(String(32), nullable=True)
     full_report_json = Column(Text, nullable=True)
+
+
+class AuditLog(Base):
+    """Records API calls for compliance and debugging (v5.3-04)."""
+    __tablename__ = "audit_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    endpoint = Column(String(255), nullable=False)
+    method = Column(String(10), nullable=False)
+    status_code = Column(Integer, nullable=True)
+    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    __table_args__ = (
+        Index("ix_audit_log_timestamp", "timestamp"),
+    )

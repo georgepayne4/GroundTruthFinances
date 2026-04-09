@@ -1,4 +1,4 @@
-"""api/database/crud.py — Database operations for the GroundTruth API (v5.3-02).
+"""api/database/crud.py — Database operations for the GroundTruth API (v5.3-04).
 
 Pure functions that accept a SQLAlchemy Session and return model instances
 or dicts. No business logic — just persistence.
@@ -13,7 +13,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from api.database.models import Assumption, Profile, Report, Run, User
+from api.database.models import Assumption, AuditLog, Profile, Report, Run, User
 
 logger = logging.getLogger(__name__)
 
@@ -22,11 +22,11 @@ logger = logging.getLogger(__name__)
 # Users
 # ---------------------------------------------------------------------------
 
-def get_or_create_user(db: Session, email: str, name: str | None = None) -> User:
+def get_or_create_user(db: Session, email: str, name: str | None = None, api_key_hash: str | None = None) -> User:
     """Return existing user by email, or create a new one."""
     user = db.query(User).filter(User.email == email).first()
     if user is None:
-        user = User(email=email, name=name)
+        user = User(email=email, name=name, api_key_hash=api_key_hash)
         db.add(user)
         db.commit()
         db.refresh(user)
@@ -40,6 +40,21 @@ def get_user_by_email(db: Session, email: str) -> User | None:
 
 def get_user_by_id(db: Session, user_id: int) -> User | None:
     return db.query(User).filter(User.id == user_id).first()
+
+
+def get_user_by_key_hash(db: Session, key_hash: str) -> User | None:
+    return db.query(User).filter(User.api_key_hash == key_hash).first()
+
+
+def set_user_api_key(db: Session, user_id: int, api_key_hash: str) -> User | None:
+    """Set the API key hash for a user. Returns the updated user or None."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        return None
+    user.api_key_hash = api_key_hash
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 # ---------------------------------------------------------------------------
@@ -211,6 +226,38 @@ def list_runs(db: Session, limit: int = 10, profile_name: str | None = None) -> 
             "emergency_fund_months": r.emergency_fund_months,
             "goals_on_track": r.goals_on_track,
             "goals_at_risk": r.goals_at_risk,
+        }
+        for r in rows
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Audit log (v5.3-04)
+# ---------------------------------------------------------------------------
+
+def log_audit(db: Session, user_id: int | None, endpoint: str, method: str, status_code: int | None = None) -> AuditLog:
+    """Record an API call in the audit log."""
+    entry = AuditLog(user_id=user_id, endpoint=endpoint, method=method, status_code=status_code)
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return entry
+
+
+def list_audit_log(db: Session, limit: int = 50, user_id: int | None = None) -> list[dict[str, Any]]:
+    """Return recent audit entries as dicts."""
+    query = db.query(AuditLog)
+    if user_id is not None:
+        query = query.filter(AuditLog.user_id == user_id)
+    rows = query.order_by(AuditLog.id.desc()).limit(limit).all()
+    return [
+        {
+            "id": r.id,
+            "user_id": r.user_id,
+            "endpoint": r.endpoint,
+            "method": r.method,
+            "status_code": r.status_code,
+            "timestamp": r.timestamp.isoformat() if r.timestamp else None,
         }
         for r in rows
     ]

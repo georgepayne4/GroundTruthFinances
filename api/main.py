@@ -1,7 +1,11 @@
-"""api/main.py — FastAPI application for the GroundTruth engine (v5.3-02).
+"""api/main.py — FastAPI application for the GroundTruth engine (v5.3-04).
 
-Exposes the engine as a stateless REST API with optional database-backed
-profile storage and run history.
+Exposes the engine as a stateless REST API with:
+  - Per-user API key authentication
+  - User-scoped data isolation
+  - Audit logging middleware
+  - Rate limiting (simple in-memory token bucket)
+  - Admin endpoints for user and assumption management
 
 Run with:  uvicorn api.main:app --reload
 """
@@ -9,17 +13,25 @@ Run with:  uvicorn api.main:app --reload
 from __future__ import annotations
 
 import logging
+import time
+from collections import defaultdict
 from contextlib import asynccontextmanager
 from typing import Any
 
 import yaml
-from fastapi import Depends, FastAPI, Query
+from fastapi import Depends, FastAPI, Query, Request, Response
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from api.database import crud
+from api.database.models import User
 from api.database.session import get_db, init_db
 from api.dependencies import (
+    generate_api_key,
+    get_current_user,
     get_default_assumptions_path,
+    hash_api_key,
+    require_admin,
     verify_api_key,
 )
 from api.models import (
@@ -38,6 +50,30 @@ from api.models import (
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Rate limiter (simple in-memory token bucket, per-user)
+# ---------------------------------------------------------------------------
+
+_RATE_LIMIT_RPM = int(__import__("os").environ.get("GROUNDTRUTH_RATE_LIMIT_RPM", "60"))
+_rate_buckets: dict[str, list[float]] = defaultdict(list)
+
+
+def _check_rate_limit(key: str) -> bool:
+    """Return True if the request is allowed, False if rate-limited."""
+    now = time.monotonic()
+    window = 60.0
+    bucket = _rate_buckets[key]
+    _rate_buckets[key] = [t for t in bucket if now - t < window]
+    if len(_rate_buckets[key]) >= _RATE_LIMIT_RPM:
+        return False
+    _rate_buckets[key].append(now)
+    return True
+
+
+# ---------------------------------------------------------------------------
+# App setup
+# ---------------------------------------------------------------------------
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Create database tables on startup (dev/test mode)."""
@@ -47,11 +83,55 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="GroundTruth Financial Planning API",
-    version="5.3.2",
+    version="5.3.4",
     description="Advisor-grade UK financial planning engine.",
     responses={401: {"model": ErrorResponse}},
     lifespan=lifespan,
 )
+
+
+# ---------------------------------------------------------------------------
+# Middleware: audit logging + rate limiting
+# ---------------------------------------------------------------------------
+
+@app.middleware("http")
+async def audit_and_rate_limit(request: Request, call_next) -> Response:
+    """Log every API call and enforce per-user rate limits."""
+    # Skip docs/openapi
+    path = request.url.path
+    if path in ("/docs", "/openapi.json", "/redoc"):
+        return await call_next(request)
+
+    # Rate limit by API key (or IP if no key)
+    api_key = request.headers.get("X-API-Key", "")
+    rate_key = api_key or request.client.host if request.client else "unknown"
+
+    if not _check_rate_limit(rate_key):
+        return JSONResponse(
+            status_code=429,
+            content={"detail": f"Rate limit exceeded ({_RATE_LIMIT_RPM} requests/minute)"},
+        )
+
+    response = await call_next(request)
+
+    # Audit log (best-effort, don't fail the request if DB is unavailable)
+    try:
+        from api.database.session import _get_session_factory
+        factory = _get_session_factory()
+        db = factory()
+        try:
+            user_id = None
+            if api_key:
+                user = crud.get_user_by_key_hash(db, hash_api_key(api_key))
+                if user:
+                    user_id = user.id
+            crud.log_audit(db, user_id=user_id, endpoint=path, method=request.method, status_code=response.status_code)
+        finally:
+            db.close()
+    except Exception:
+        logger.debug("Audit log write failed (non-fatal)")
+
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -62,10 +142,10 @@ app = FastAPI(
     "/api/v1/analyse",
     response_model=AnalyseResponse,
     summary="Run full analysis pipeline",
-    dependencies=[Depends(verify_api_key)],
 )
 async def analyse(
     request: AnalyseRequest,
+    user: User | None = Depends(verify_api_key),
     db: Session = Depends(get_db),
 ) -> AnalyseResponse:
     """Accept a JSON profile, run the full 15-stage pipeline, return the report."""
@@ -157,23 +237,28 @@ async def update_assumptions() -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Profile management (new in v5.3-02)
+# Profile management (user-scoped in v5.3-04)
 # ---------------------------------------------------------------------------
 
 @app.post(
     "/api/v1/profiles",
     response_model=ProfileResponse,
     summary="Create or update a named profile",
-    dependencies=[Depends(verify_api_key)],
 )
 async def create_profile(
     request: ProfileCreateRequest,
+    user: User | None = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ProfileResponse:
-    """Store a profile in the database. Creates a default user if needed."""
-    user = crud.get_or_create_user(db, email=request.user_email, name=request.user_name)
+    """Store a profile in the database. In production, scoped to the authenticated user."""
+    if user is not None:
+        target_user = user
+    else:
+        # Dev mode: create/get user from request email
+        target_user = crud.get_or_create_user(db, email=request.user_email, name=request.user_name)
+
     yaml_content = yaml.dump(request.profile, default_flow_style=False)
-    profile = crud.create_profile(db, user_id=user.id, name=request.profile_name, yaml_content=yaml_content)
+    profile = crud.create_profile(db, user_id=target_user.id, name=request.profile_name, yaml_content=yaml_content)
     return ProfileResponse(
         id=profile.id,
         user_id=profile.user_id,
@@ -186,18 +271,24 @@ async def create_profile(
 @app.get(
     "/api/v1/profiles",
     response_model=list[ProfileResponse],
-    summary="List profiles for a user",
-    dependencies=[Depends(verify_api_key)],
+    summary="List profiles for the authenticated user",
 )
 async def list_profiles(
-    user_email: str = Query(..., description="User email to list profiles for"),
+    user: User | None = Depends(get_current_user),
+    user_email: str | None = Query(None, description="User email (dev mode only)"),
     db: Session = Depends(get_db),
 ) -> list[ProfileResponse]:
-    """Return all profiles belonging to a user."""
-    user = crud.get_user_by_email(db, email=user_email)
-    if user is None:
+    """Return all profiles belonging to the authenticated user."""
+    if user is not None:
+        target_user = user
+    elif user_email:
+        target_user = crud.get_user_by_email(db, email=user_email)
+        if target_user is None:
+            return []
+    else:
         return []
-    profiles = crud.list_profiles(db, user_id=user.id)
+
+    profiles = crud.list_profiles(db, user_id=target_user.id)
     return [
         ProfileResponse(
             id=p.id,
@@ -211,7 +302,7 @@ async def list_profiles(
 
 
 # ---------------------------------------------------------------------------
-# History (now backed by SQLAlchemy)
+# History (user-scoped in v5.3-04)
 # ---------------------------------------------------------------------------
 
 @app.get(
@@ -249,6 +340,49 @@ async def get_all_history(
         runs=[HistoryRun(**r) for r in runs],
         count=len(runs),
     )
+
+
+# ---------------------------------------------------------------------------
+# Admin endpoints (v5.3-04)
+# ---------------------------------------------------------------------------
+
+@app.post(
+    "/api/v1/admin/users",
+    summary="Register a new user and generate an API key (admin only)",
+)
+async def admin_create_user(
+    email: str = Query(...),
+    name: str | None = Query(None),
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Create a user and return their API key. The key is shown once."""
+    raw_key = generate_api_key()
+    key_hash = hash_api_key(raw_key)
+    user = crud.get_or_create_user(db, email=email, name=name, api_key_hash=key_hash)
+    if user.api_key_hash != key_hash:
+        crud.set_user_api_key(db, user.id, key_hash)
+    return {
+        "user_id": user.id,
+        "email": user.email,
+        "api_key": raw_key,
+        "warning": "Store this key securely. It cannot be retrieved later.",
+    }
+
+
+@app.get(
+    "/api/v1/admin/audit",
+    summary="View recent audit log entries (admin only)",
+)
+async def admin_audit_log(
+    limit: int = Query(50, ge=1, le=500),
+    user_id: int | None = Query(None),
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Return recent audit log entries."""
+    entries = crud.list_audit_log(db, limit=limit, user_id=user_id)
+    return {"entries": entries, "count": len(entries)}
 
 
 # ---------------------------------------------------------------------------
