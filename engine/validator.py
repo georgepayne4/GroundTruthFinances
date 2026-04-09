@@ -363,9 +363,9 @@ def _check_accounts(profile: dict) -> list[ValidationFlag]:
         return flags
 
     # Lazy import to avoid circular dependency
-    from engine.loader import _ACCOUNT_TYPE_MAPPING
+    from engine.loader import ACCOUNT_TYPE_MAPPING
 
-    known_types = set(_ACCOUNT_TYPE_MAPPING.keys())
+    known_types = set(ACCOUNT_TYPE_MAPPING.keys())
     seen_names: set[str] = set()
 
     for i, acc in enumerate(accounts):

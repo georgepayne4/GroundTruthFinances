@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from engine.debt import _is_full_pay_card, analyse_debt
-from engine.loader import _normalise_profile
+from engine.loader import normalise_profile
 
 
 class TestDebtAnalysis:
@@ -20,7 +20,7 @@ class TestDebtAnalysis:
 
     def test_avalanche_order_by_interest_rate(self, assumptions):
         """Avalanche should prioritise highest interest rate first."""
-        profile = _normalise_profile({
+        profile = normalise_profile({
             "personal": {"age": 30, "employment_type": "employed"},
             "income": {"primary_gross_annual": 50000},
             "expenses": {"housing": {"rent_monthly": 1000}},
@@ -51,7 +51,7 @@ class TestDebtAnalysis:
 @pytest.fixture
 def full_pay_card_profile() -> dict:
     """Profile with one paid-in-full credit card and one revolver."""
-    return _normalise_profile({
+    return normalise_profile({
         "personal": {"age": 30, "employment_type": "employed",
                      "retirement_age": 67, "dependents": 0,
                      "risk_profile": "moderate"},
@@ -123,7 +123,7 @@ class TestCreditCardModel:
         assert card["treated_as"] == "cash_flow_tool"
 
     def test_high_utilisation_tier(self, assumptions):
-        profile = _normalise_profile({
+        profile = normalise_profile({
             "personal": {"age": 30, "employment_type": "employed",
                          "retirement_age": 67, "dependents": 0,
                          "risk_profile": "moderate"},

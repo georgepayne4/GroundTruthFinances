@@ -67,8 +67,8 @@ class TestCashflowHighEarner:
 class TestSideIncomeTax:
     def test_side_income_taxed_at_marginal_rate(self, assumptions):
         """Side income for a higher-rate taxpayer should be taxed above 20%."""
-        from engine.loader import _normalise_profile
-        profile = _normalise_profile({
+        from engine.loader import normalise_profile
+        profile = normalise_profile({
             "personal": {"age": 35, "employment_type": "employed"},
             "income": {
                 "primary_gross_annual": 80000,
@@ -91,8 +91,8 @@ class TestSideIncomeTax:
 
     def test_side_income_basic_rate_for_low_earner(self, assumptions):
         """Side income for a basic-rate taxpayer should be taxed at 20%."""
-        from engine.loader import _normalise_profile
-        profile = _normalise_profile({
+        from engine.loader import normalise_profile
+        profile = normalise_profile({
             "personal": {"age": 25, "employment_type": "employed"},
             "income": {
                 "primary_gross_annual": 30000,
@@ -143,7 +143,7 @@ class TestSalarySacrifice:
         assert passthrough["total_pension_with_passthrough"] == 4375.0
 
     def test_salary_sacrifice_mode_reduces_ni(self, assumptions):
-        from engine.loader import _normalise_profile
+        from engine.loader import normalise_profile
         base = {
             "personal": {"age": 30, "employment_type": "employed"},
             "income": {"primary_gross_annual": 50000},
@@ -155,13 +155,13 @@ class TestSalarySacrifice:
             "debts": [],
             "goals": [],
         }
-        profile_personal = _normalise_profile(dict(base))
+        profile_personal = normalise_profile(dict(base))
         result_personal = analyse_cashflow(profile_personal, assumptions)
 
         base_ss = dict(base)
         base_ss["savings"] = dict(base["savings"])
         base_ss["savings"]["pension_contribution_method"] = "salary_sacrifice"
-        profile_ss = _normalise_profile(base_ss)
+        profile_ss = normalise_profile(base_ss)
         result_ss = analyse_cashflow(profile_ss, assumptions)
 
         # Salary sacrifice should have lower NI (higher take-home)
@@ -176,7 +176,7 @@ class TestSalarySacrifice:
 
     def test_salary_sacrifice_ni_saving_amount(self, assumptions):
         """Employee NI saving should equal contribution * NI rate."""
-        from engine.loader import _normalise_profile
+        from engine.loader import normalise_profile
         base = {
             "personal": {"age": 30, "employment_type": "employed"},
             "income": {"primary_gross_annual": 50000},
@@ -188,13 +188,13 @@ class TestSalarySacrifice:
             "debts": [],
             "goals": [],
         }
-        profile_personal = _normalise_profile(dict(base))
+        profile_personal = normalise_profile(dict(base))
         result_personal = analyse_cashflow(profile_personal, assumptions)
 
         base_ss = dict(base)
         base_ss["savings"] = dict(base["savings"])
         base_ss["savings"]["pension_contribution_method"] = "salary_sacrifice"
-        profile_ss = _normalise_profile(base_ss)
+        profile_ss = normalise_profile(base_ss)
         result_ss = analyse_cashflow(profile_ss, assumptions)
 
         ni_diff = (

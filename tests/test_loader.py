@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from engine.loader import _aggregate_accounts, _normalise_profile
+from engine.loader import _aggregate_accounts, normalise_profile
 
 
 def _base_profile(**overrides) -> dict:
@@ -92,7 +92,7 @@ class TestAggregateAccounts:
 
 
 # ---------------------------------------------------------------------------
-# _normalise_profile integration with accounts
+# normalise_profile integration with accounts
 # ---------------------------------------------------------------------------
 
 class TestNormaliseProfileWithAccounts:
@@ -101,7 +101,7 @@ class TestNormaliseProfileWithAccounts:
             {"name": "Chase EF", "type": "easy_access", "balance": 6000, "maps_to": "emergency_fund"},
             {"name": "T212 ISA", "type": "stocks_and_shares_isa", "balance": 9000},
         ])
-        normalised = _normalise_profile(profile)
+        normalised = normalise_profile(profile)
         assert normalised["savings"]["emergency_fund"] == 6000
         assert normalised["savings"]["isa_balance"] == 9000
 
@@ -111,7 +111,7 @@ class TestNormaliseProfileWithAccounts:
         profile["accounts"] = [
             {"name": "Real ISA", "type": "isa", "balance": 9999},
         ]
-        normalised = _normalise_profile(profile)
+        normalised = normalise_profile(profile)
         assert normalised["savings"]["isa_balance"] == 9999
         assert "isa_balance" in normalised["savings"]["_account_overridden_fields"]
 
@@ -119,7 +119,7 @@ class TestNormaliseProfileWithAccounts:
         profile = _base_profile()
         profile["savings"]["emergency_fund"] = 5000
         profile["savings"]["isa_balance"] = 7000
-        normalised = _normalise_profile(profile)
+        normalised = normalise_profile(profile)
         assert normalised["savings"]["emergency_fund"] == 5000
         assert normalised["savings"]["isa_balance"] == 7000
         assert "_account_aggregated_fields" not in normalised["savings"]
@@ -130,7 +130,7 @@ class TestNormaliseProfileWithAccounts:
         profile["accounts"] = [
             {"name": "ISA", "type": "isa", "balance": 6000},
         ]
-        normalised = _normalise_profile(profile)
+        normalised = normalise_profile(profile)
         assert normalised["savings"]["pension_balance"] == 50000  # untouched
         assert normalised["savings"]["isa_balance"] == 6000
 
@@ -140,7 +140,7 @@ class TestNormaliseProfileWithAccounts:
             {"name": "ISA", "type": "isa", "balance": 5000},
             {"name": "Pension", "type": "pension", "balance": 20000},
         ])
-        normalised = _normalise_profile(profile)
+        normalised = normalise_profile(profile)
         # 1000 (general) + 5000 (isa) + 0 (ef/lisa) + 20000 (pension) + 0 (other)
         assert normalised["savings"]["_total_assets"] == 26000
 
@@ -149,7 +149,7 @@ class TestNormaliseProfileWithAccounts:
             {"name": "Current", "type": "current", "balance": 100},
             {"name": "ISA", "type": "isa", "balance": 200},
         ])
-        normalised = _normalise_profile(profile)
+        normalised = normalise_profile(profile)
         agg = normalised["savings"]["_account_aggregated_fields"]
         assert "general_savings" in agg
         assert "isa_balance" in agg
@@ -162,7 +162,7 @@ class TestNormaliseProfileWithAccounts:
 class TestAccountValidation:
     def test_negative_balance_is_error(self, assumptions):
         from engine.validator import Severity, validate_profile
-        profile = _normalise_profile(_base_profile(accounts=[
+        profile = normalise_profile(_base_profile(accounts=[
             {"name": "Bad", "type": "current", "balance": -50},
         ]))
         flags = validate_profile(profile, assumptions)
@@ -171,7 +171,7 @@ class TestAccountValidation:
 
     def test_unknown_type_warning(self, assumptions):
         from engine.validator import Severity, validate_profile
-        profile = _normalise_profile(_base_profile(accounts=[
+        profile = normalise_profile(_base_profile(accounts=[
             {"name": "Crypto pot", "type": "shitcoin", "balance": 100},
         ]))
         flags = validate_profile(profile, assumptions)
@@ -183,7 +183,7 @@ class TestAccountValidation:
 
     def test_unknown_type_with_maps_to_no_warning(self, assumptions):
         from engine.validator import Severity, validate_profile
-        profile = _normalise_profile(_base_profile(accounts=[
+        profile = normalise_profile(_base_profile(accounts=[
             {"name": "Custom", "type": "shitcoin", "balance": 100, "maps_to": "other_investments"},
         ]))
         flags = validate_profile(profile, assumptions)
@@ -195,7 +195,7 @@ class TestAccountValidation:
 
     def test_missing_name_warning(self, assumptions):
         from engine.validator import Severity, validate_profile
-        profile = _normalise_profile(_base_profile(accounts=[
+        profile = normalise_profile(_base_profile(accounts=[
             {"type": "current", "balance": 100},
         ]))
         flags = validate_profile(profile, assumptions)
@@ -207,7 +207,7 @@ class TestAccountValidation:
         profile = _base_profile()
         profile["savings"]["isa_balance"] = 1234
         profile["accounts"] = [{"name": "Real ISA", "type": "isa", "balance": 9999}]
-        normalised = _normalise_profile(profile)
+        normalised = normalise_profile(profile)
         flags = validate_profile(normalised, assumptions)
         info_flags = [
             f for f in flags
@@ -217,7 +217,7 @@ class TestAccountValidation:
 
     def test_accounts_not_list_is_error(self, assumptions):
         from engine.validator import Severity, validate_profile
-        profile = _normalise_profile(_base_profile())
+        profile = normalise_profile(_base_profile())
         profile["accounts"] = "not a list"
         flags = validate_profile(profile, assumptions)
         assert any(f.field == "accounts" and f.severity == Severity.ERROR for f in flags)

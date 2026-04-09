@@ -499,63 +499,63 @@ class TestMergeBankData:
         }
 
     def test_merge_takes_max_by_default(self):
-        from engine.loader import _normalise_profile
-        profile = _normalise_profile(self._base_profile())
+        from engine.loader import normalise_profile
+        profile = normalise_profile(self._base_profile())
         bank = self._bank_result(expenses={"living": {"groceries_monthly": 400}})
         merged = merge_bank_data(profile, bank)
         # Bank value (400) > profile value (250) → bank wins
         assert merged["expenses"]["living"]["groceries_monthly"] == 400
 
     def test_merge_keeps_higher_profile_value(self):
-        from engine.loader import _normalise_profile
-        profile = _normalise_profile(self._base_profile())
+        from engine.loader import normalise_profile
+        profile = normalise_profile(self._base_profile())
         bank = self._bank_result(expenses={"living": {"groceries_monthly": 100}})
         merged = merge_bank_data(profile, bank)
         # Profile value (250) > bank value (100) → profile wins
         assert merged["expenses"]["living"]["groceries_monthly"] == 250
 
     def test_merge_override_replaces_value(self):
-        from engine.loader import _normalise_profile
-        profile = _normalise_profile(self._base_profile())
+        from engine.loader import normalise_profile
+        profile = normalise_profile(self._base_profile())
         bank = self._bank_result(expenses={"living": {"groceries_monthly": 100}})
         merged = merge_bank_data(profile, bank, override=True)
         assert merged["expenses"]["living"]["groceries_monthly"] == 100
 
     def test_merge_adds_new_subcategory(self):
-        from engine.loader import _normalise_profile
-        profile = _normalise_profile(self._base_profile())
+        from engine.loader import normalise_profile
+        profile = normalise_profile(self._base_profile())
         bank = self._bank_result(expenses={"living": {"subscriptions_monthly": 25}})
         merged = merge_bank_data(profile, bank)
         assert merged["expenses"]["living"]["subscriptions_monthly"] == 25
 
     def test_merge_adds_new_category(self):
-        from engine.loader import _normalise_profile
-        profile = _normalise_profile(self._base_profile())
+        from engine.loader import normalise_profile
+        profile = normalise_profile(self._base_profile())
         bank = self._bank_result(expenses={"transport": {"fuel_monthly": 80}})
         merged = merge_bank_data(profile, bank)
         assert merged["expenses"]["transport"]["fuel_monthly"] == 80
 
     def test_merge_renormalises_totals(self):
-        from engine.loader import _normalise_profile
-        profile = _normalise_profile(self._base_profile())
+        from engine.loader import normalise_profile
+        profile = normalise_profile(self._base_profile())
         bank = self._bank_result(expenses={"living": {"groceries_monthly": 500}})
         merged = merge_bank_data(profile, bank)
         # Totals should reflect new groceries figure
         assert merged["expenses"]["_total_monthly"] == 1200 + 500
 
     def test_merge_does_not_mutate_input(self):
-        from engine.loader import _normalise_profile
-        profile = _normalise_profile(self._base_profile())
+        from engine.loader import normalise_profile
+        profile = normalise_profile(self._base_profile())
         original_groceries = profile["expenses"]["living"]["groceries_monthly"]
         bank = self._bank_result(expenses={"living": {"groceries_monthly": 999}})
         merge_bank_data(profile, bank)
         assert profile["expenses"]["living"]["groceries_monthly"] == original_groceries
 
     def test_merge_infers_income_when_missing(self):
-        from engine.loader import _normalise_profile
+        from engine.loader import normalise_profile
         base = self._base_profile()
         base["income"] = {}  # no salary specified
-        profile = _normalise_profile(base)
+        profile = normalise_profile(base)
         bank = self._bank_result(income_txns=[
             {"date": "2026-03-05", "description": "SALARY ACME", "amount": 3000.00},
         ])
@@ -564,8 +564,8 @@ class TestMergeBankData:
         assert merged["_bank_import"]["income_inferred"] is not None
 
     def test_merge_does_not_overwrite_existing_income(self):
-        from engine.loader import _normalise_profile
-        profile = _normalise_profile(self._base_profile())
+        from engine.loader import normalise_profile
+        profile = normalise_profile(self._base_profile())
         bank = self._bank_result(income_txns=[
             {"date": "2026-03-05", "description": "SALARY ACME", "amount": 5000.00},
         ])
@@ -575,8 +575,8 @@ class TestMergeBankData:
         assert merged["_bank_import"]["income_inferred"] is None
 
     def test_merge_attaches_bank_import_metadata(self):
-        from engine.loader import _normalise_profile
-        profile = _normalise_profile(self._base_profile())
+        from engine.loader import normalise_profile
+        profile = normalise_profile(self._base_profile())
         bank = self._bank_result(
             expenses={"living": {"groceries_monthly": 400}},
             recurring=[{"description": "Netflix", "monthly_estimate": 12.99}],
@@ -749,10 +749,10 @@ class TestDetectSubscriptions:
 
 class TestSubscriptionInsight:
     def _profile_with_subs(self, subs):
-        from engine.loader import _normalise_profile
+        from engine.loader import normalise_profile
         from tests.test_import_csv import TestMergeBankData
         base = TestMergeBankData()._base_profile()
-        profile = _normalise_profile(base)
+        profile = normalise_profile(base)
         profile["_bank_import"] = {
             "summary": {},
             "subscriptions": subs,

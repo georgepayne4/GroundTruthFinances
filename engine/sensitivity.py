@@ -45,7 +45,7 @@ def run_sensitivity(
     """
     sens_cfg = assumptions.get("sensitivity", {})
 
-    baseline = _extract_metrics(
+    baseline = extract_metrics(
         cashflow, investment_analysis, mortgage_analysis,
     )
 
@@ -89,7 +89,7 @@ def run_sensitivity(
 # Metric extraction
 # ---------------------------------------------------------------------------
 
-def _extract_metrics(cashflow: dict, investment: dict, mortgage: dict) -> dict:
+def extract_metrics(cashflow: dict, investment: dict, mortgage: dict) -> dict:
     """Pull key metrics from module outputs for comparison."""
     pension = investment.get("pension_analysis", {})
     return {

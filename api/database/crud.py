@@ -176,9 +176,9 @@ def record_run(
 
     Mirrors engine/history.py record_run() but uses SQLAlchemy.
     """
-    from engine.history import _extract_metrics
+    from engine.history import extract_metrics
 
-    metrics = _extract_metrics(report, profile)
+    metrics = extract_metrics(report, profile)
     row = Run(
         timestamp=metrics["timestamp"],
         profile_name=metrics["profile_name"],

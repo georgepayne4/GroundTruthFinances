@@ -23,6 +23,7 @@ from typing import Any
 
 import yaml
 from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -86,10 +87,26 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="GroundTruth Financial Planning API",
-    version="5.3.5",
+    version="6.0.0",
     description="Advisor-grade UK financial planning engine.",
     responses={401: {"model": ErrorResponse}},
     lifespan=lifespan,
+)
+
+_CORS_ORIGINS = [
+    o.strip()
+    for o in __import__("os").environ.get(
+        "GROUNDTRUTH_CORS_ORIGINS", "http://localhost:5173,http://localhost:3000"
+    ).split(",")
+    if o.strip()
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -152,7 +169,18 @@ async def analyse(
     db: Session = Depends(get_db),
 ) -> AnalyseResponse:
     """Accept a JSON profile, run the full 15-stage pipeline, return the report."""
-    report, _profile, run_id = _run_pipeline(request.profile, request.assumptions, db=db)
+    from engine.pipeline import run_pipeline
+
+    report, profile, _flags = run_pipeline(
+        request.profile,
+        assumptions_override=request.assumptions,
+        assumptions_path=get_default_assumptions_path(),
+    )
+    run_id = None
+    try:
+        run_id = crud.record_run(db, report, profile=profile)
+    except Exception:
+        logger.warning("Could not record run in database")
     scoring = report.get("scoring", {})
     meta = report.get("meta", {})
     return AnalyseResponse(
@@ -172,10 +200,10 @@ async def analyse(
 )
 async def validate(request: ValidateRequest) -> ValidateResponse:
     """Validate a profile and return severity-graded flags."""
-    from engine.loader import _normalise_profile, load_assumptions
+    from engine.loader import load_assumptions, normalise_profile
     from engine.validator import validate_profile
 
-    profile = _normalise_profile(request.profile)
+    profile = normalise_profile(request.profile)
     assumptions = load_assumptions(get_default_assumptions_path())
     flags = validate_profile(profile, assumptions)
 
@@ -473,92 +501,3 @@ async def admin_audit_log(
     return {"entries": entries, "count": len(entries)}
 
 
-# ---------------------------------------------------------------------------
-# Pipeline runner — mirrors the logic in main.py without CLI print statements
-# ---------------------------------------------------------------------------
-
-def _run_pipeline(
-    raw_profile: dict[str, Any],
-    assumptions_override: dict[str, Any] | None = None,
-    db: Session | None = None,
-) -> tuple[dict[str, Any], dict[str, Any], int | None]:
-    """Run the full engine pipeline. Returns (report, profile, run_id)."""
-    from engine.cashflow import analyse_cashflow
-    from engine.debt import analyse_debt
-    from engine.estate import analyse_estate
-    from engine.goals import analyse_goals
-    from engine.insights import generate_insights
-    from engine.insurance import assess_insurance
-    from engine.investments import analyse_investments
-    from engine.life_events import simulate_life_events
-    from engine.loader import _normalise_profile, load_assumptions
-    from engine.mortgage import analyse_mortgage
-    from engine.report import assemble_report
-    from engine.scenarios import run_scenarios
-    from engine.scoring import calculate_scores
-    from engine.sensitivity import run_sensitivity
-    from engine.validator import validate_profile
-
-    profile = _normalise_profile(raw_profile)
-
-    if assumptions_override:
-        from engine.schemas import validate_assumptions
-        validate_assumptions(assumptions_override)
-        assumptions = assumptions_override
-    else:
-        assumptions = load_assumptions(get_default_assumptions_path())
-
-    flags = validate_profile(profile, assumptions)
-    flag_dicts = [f.to_dict() for f in flags]
-
-    cashflow = analyse_cashflow(profile, assumptions)
-    debt_result = analyse_debt(profile, assumptions)
-    goal_result = analyse_goals(profile, assumptions, cashflow, debt_result)
-    investment_result = analyse_investments(profile, assumptions, cashflow)
-    mortgage_result = analyse_mortgage(profile, assumptions, cashflow, debt_result)
-    insurance_result = assess_insurance(profile, assumptions, cashflow, mortgage_result, investment_result)
-    life_event_result = simulate_life_events(profile, assumptions, cashflow)
-    scoring_result = calculate_scores(
-        profile, assumptions, cashflow, debt_result,
-        goal_result, investment_result, mortgage_result,
-    )
-    scenario_result = run_scenarios(
-        profile, assumptions, cashflow, debt_result,
-        mortgage_result, investment_result,
-    )
-    estate_result = analyse_estate(profile, assumptions, investment_result, mortgage_result, cashflow)
-    sensitivity_result = run_sensitivity(
-        profile, assumptions, cashflow, debt_result,
-        investment_result, mortgage_result,
-    )
-    insights_result = generate_insights(
-        profile, assumptions, cashflow, debt_result,
-        goal_result, investment_result, mortgage_result,
-        scoring_result, life_event_result,
-    )
-
-    report = assemble_report(
-        profile=profile,
-        validation_flags=flag_dicts,
-        cashflow=cashflow,
-        debt_analysis=debt_result,
-        goal_analysis=goal_result,
-        investment_analysis=investment_result,
-        mortgage_analysis=mortgage_result,
-        life_events=life_event_result,
-        scoring=scoring_result,
-        insights=insights_result,
-        insurance=insurance_result,
-        scenarios=scenario_result,
-        estate=estate_result,
-        sensitivity=sensitivity_result,
-    )
-
-    run_id = None
-    if db is not None:
-        try:
-            run_id = crud.record_run(db, report, profile=profile)
-        except Exception:
-            logger.warning("Could not record run in database")
-
-    return report, profile, run_id

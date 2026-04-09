@@ -42,7 +42,7 @@ def load_yaml(path: str | Path) -> dict[str, Any]:
 def load_profile(path: str | Path) -> dict[str, Any]:
     """Load and normalise a user financial profile."""
     raw = load_yaml(path)
-    profile = _normalise_profile(raw)
+    profile = normalise_profile(raw)
     logger.info("Profile loaded: %d sections", len([k for k in profile if not k.startswith("_")]))
     return profile
 
@@ -124,7 +124,7 @@ def merge_bank_data(
     income_verification = verify_income(income_txns, declared_gross)
 
     # Re-normalise so downstream modules see fresh totals
-    merged = _normalise_profile(merged)
+    merged = normalise_profile(merged)
 
     merged["_bank_import"] = {
         "summary": bank_result.get("summary", {}),
@@ -161,7 +161,7 @@ def load_assumptions(path: str | Path | None = None) -> dict[str, Any]:
 # Normalisation helpers
 # ---------------------------------------------------------------------------
 
-_ACCOUNT_TYPE_MAPPING: dict[str, str] = {
+ACCOUNT_TYPE_MAPPING: dict[str, str] = {
     # account type → savings field it contributes to by default
     "current": "general_savings",
     "savings": "general_savings",
@@ -188,7 +188,7 @@ def _aggregate_accounts(profile: dict) -> dict[str, float]:
 
     Each account contributes to one savings field, determined by:
       1. explicit `maps_to` field on the account, OR
-      2. _ACCOUNT_TYPE_MAPPING[account.type], OR
+      2. ACCOUNT_TYPE_MAPPING[account.type], OR
       3. "general_savings" as a safe fallback for unknown types.
 
     Returns a {savings_field: total} dict, plus an "_account_breakdown" key
@@ -204,14 +204,14 @@ def _aggregate_accounts(profile: dict) -> dict[str, float]:
             continue
         target = (
             acc.get("maps_to")
-            or _ACCOUNT_TYPE_MAPPING.get(acc.get("type", "").lower())
+            or ACCOUNT_TYPE_MAPPING.get(acc.get("type", "").lower())
             or "general_savings"
         )
         totals[target] = totals.get(target, 0) + balance
     return totals
 
 
-def _normalise_profile(raw: dict) -> dict:
+def normalise_profile(raw: dict) -> dict:
     """
     Walk the raw YAML and attach computed convenience fields so that
     downstream modules can work with consistent monthly/annual totals

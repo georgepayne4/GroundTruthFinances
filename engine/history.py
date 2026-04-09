@@ -120,7 +120,7 @@ def record_run(
     enables net-worth and emergency-fund-months tracking that the report
     alone doesn't expose.
     """
-    metrics = _extract_metrics(report, profile)
+    metrics = extract_metrics(report, profile)
     payload_json = json.dumps(report, default=str)
 
     with _connect(db_path) as conn:
@@ -262,7 +262,7 @@ def latest_two_runs(db_path: str | Path, profile_name: str | None = None) -> tup
 # Metric extraction
 # ---------------------------------------------------------------------------
 
-def _extract_metrics(
+def extract_metrics(
     report: dict[str, Any],
     profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:

@@ -26,8 +26,8 @@ def sample_profile() -> dict:
 @pytest.fixture
 def minimal_profile() -> dict:
     """Bare-minimum profile with only required fields."""
-    from engine.loader import _normalise_profile
-    return _normalise_profile({
+    from engine.loader import normalise_profile
+    return normalise_profile({
         "personal": {
             "name": "Test User",
             "age": 30,
@@ -57,8 +57,8 @@ def minimal_profile() -> dict:
 @pytest.fixture
 def high_earner_profile() -> dict:
     """Profile with income above the additional rate threshold."""
-    from engine.loader import _normalise_profile
-    return _normalise_profile({
+    from engine.loader import normalise_profile
+    return normalise_profile({
         "personal": {
             "name": "High Earner",
             "age": 45,
@@ -95,8 +95,8 @@ def high_earner_profile() -> dict:
 @pytest.fixture
 def self_employed_profile() -> dict:
     """Self-employed profile with business expenses."""
-    from engine.loader import _normalise_profile
-    return _normalise_profile({
+    from engine.loader import normalise_profile
+    return normalise_profile({
         "personal": {
             "name": "Contractor",
             "age": 35,

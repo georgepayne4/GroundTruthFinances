@@ -31,7 +31,7 @@ def _make_report(
     savings_rate: float = 18.0,
     mortgage_readiness: str = "Almost ready",
 ) -> dict:
-    """Build a minimal report dict that satisfies _extract_metrics."""
+    """Build a minimal report dict that satisfies extract_metrics."""
     return {
         "meta": {
             "profile_name": profile_name,
