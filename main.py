@@ -127,6 +127,9 @@ def main() -> None:
         if bi.get("subscriptions"):
             sub_total = bsum.get("subscription_monthly_total", 0)
             print(f"  Subscriptions:      {len(bi['subscriptions'])} active, {sub_total:,.2f}/mo total")
+        if bi.get("committed_outflows"):
+            co_total = bsum.get("committed_outflow_monthly_total", 0)
+            print(f"  DD/SO committed:    {len(bi['committed_outflows'])} payees, {co_total:,.2f}/mo total")
 
     name = profile.get("personal", {}).get("name", "Unknown")
     print(f"\nAnalysing financial profile for: {name}")
@@ -538,6 +541,8 @@ def _run_csv_preview(csv_path: Path) -> None:
     print(f"  Uncategorised:      {summary['uncategorised_count']}")
     if summary.get("subscription_count"):
         print(f"  Subscriptions:      {summary['subscription_count']} ({summary.get('subscription_monthly_total', 0):,.2f}/mo)")
+    if summary.get("committed_outflow_count"):
+        print(f"  DD/SO committed:    {summary['committed_outflow_count']} ({summary.get('committed_outflow_monthly_total', 0):,.2f}/mo)")
     if summary.get("date_range"):
         dr = summary["date_range"]
         print(f"  Date range:         {dr['start']} to {dr['end']}")

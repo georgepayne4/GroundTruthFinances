@@ -56,6 +56,8 @@ class Transaction:
 
     amount: signed — negative for outflows (debits), positive for inflows.
     confidence: 0.0–1.0 score for the auto-categorisation. None if uncategorised.
+    payment_method: normalised type — "direct_debit", "standing_order",
+        "card", "transfer", or None if the CSV format doesn't expose it.
     """
     txn_date: date
     description: str
@@ -64,6 +66,7 @@ class Transaction:
     category: str | None = None
     sub_category: str | None = None
     confidence: float | None = None
+    payment_method: str | None = None
     raw: dict[str, str] = field(default_factory=dict)
 
 
@@ -83,6 +86,9 @@ class BankFormat:
     amount_field: str | None = None
     debit_field: str | None = None
     credit_field: str | None = None
+    # v5.2-07: optional payment type column (DD, SO, card, etc.)
+    type_field: str | None = None
+    type_mapping: dict[str, str] | None = None  # raw value → normalised method
 
 
 BANK_FORMATS: tuple[BankFormat, ...] = (
@@ -93,6 +99,14 @@ BANK_FORMATS: tuple[BankFormat, ...] = (
         description_field="Name",
         amount_field="Amount",
         date_formats=("%d/%m/%Y", "%Y-%m-%d"),
+        type_field="Type",
+        type_mapping={
+            "direct debit": "direct_debit",
+            "standing order": "standing_order",
+            "card payment": "card",
+            "faster payment": "transfer",
+            "bank transfer": "transfer",
+        },
     ),
     BankFormat(
         name="starling",
@@ -138,6 +152,14 @@ BANK_FORMATS: tuple[BankFormat, ...] = (
         debit_field="Debit Amount",
         credit_field="Credit Amount",
         date_formats=("%d/%m/%Y",),
+        type_field="Transaction Type",
+        type_mapping={
+            "dd": "direct_debit",
+            "so": "standing_order",
+            "deb": "card",
+            "fpi": "transfer",
+            "bgc": "transfer",
+        },
     ),
     BankFormat(
         name="natwest",
@@ -146,6 +168,17 @@ BANK_FORMATS: tuple[BankFormat, ...] = (
         description_field="Description",
         amount_field="Value",
         date_formats=("%d/%m/%Y",),
+        type_field="Type",
+        type_mapping={
+            "d/d": "direct_debit",
+            "dd": "direct_debit",
+            "s/o": "standing_order",
+            "so": "standing_order",
+            "pos": "card",
+            "vis": "card",
+            "bac": "transfer",
+            "chq": "transfer",
+        },
     ),
 )
 
@@ -415,6 +448,59 @@ def detect_subscriptions(
     return subs
 
 
+def detect_committed_outflows(
+    transactions: list[Transaction],
+    min_occurrences: int = 2,
+) -> list[dict[str, Any]]:
+    """v5.2-07: Identify committed expenses from direct debits and standing orders.
+
+    These are outflows whose payment_method is 'direct_debit' or
+    'standing_order'. They represent fixed obligations (utilities, council
+    tax, insurance, loan repayments) that are more reliable than card
+    spending for estimating true committed monthly costs.
+
+    Returns a list of dicts sorted by monthly amount, with category
+    mapping where available: {name, merchant_key, payment_method,
+    mean_amount, monthly_amount, occurrences, category, sub_category,
+    first_seen, last_seen}.
+    """
+    committed_methods = {"direct_debit", "standing_order"}
+    groups: dict[str, list[Transaction]] = defaultdict(list)
+    for txn in transactions:
+        if txn.amount >= 0 or txn.payment_method not in committed_methods:
+            continue
+        key = _normalise_merchant(txn.description)
+        if key:
+            groups[key].append(txn)
+
+    results: list[dict[str, Any]] = []
+    for key, txns in groups.items():
+        if len(txns) < min_occurrences:
+            continue
+        amounts = [abs(t.amount) for t in txns]
+        mean = sum(amounts) / len(amounts)
+        if mean == 0:
+            continue
+        dates = sorted(t.txn_date for t in txns)
+        first_txn = txns[0]
+        results.append({
+            "name": _clean_subscription_name(first_txn.description),
+            "merchant_key": key,
+            "payment_method": first_txn.payment_method,
+            "mean_amount": round(mean, 2),
+            "monthly_amount": round(mean, 2),
+            "occurrences": len(txns),
+            "category": first_txn.category,
+            "sub_category": first_txn.sub_category,
+            "first_seen": dates[0].isoformat(),
+            "last_seen": dates[-1].isoformat(),
+        })
+
+    results.sort(key=lambda r: r["monthly_amount"], reverse=True)
+    logger.info("Detected %d committed outflows (DD/SO)", len(results))
+    return results
+
+
 def aggregate_to_expenses(
     transactions: list[Transaction], months: int | None = None,
 ) -> dict[str, dict[str, float]]:
@@ -487,6 +573,7 @@ def import_bank_csv(
     income = detect_income_transactions(transactions)
     recurring = detect_recurring_transactions(transactions)
     subscriptions = detect_subscriptions(transactions, recurring)
+    committed = detect_committed_outflows(transactions)
 
     return {
         "expenses": expenses,
@@ -500,6 +587,7 @@ def import_bank_csv(
         ],
         "recurring_transactions": recurring,
         "subscriptions": subscriptions,
+        "committed_outflows": committed,
         "summary": {
             "transactions_parsed": len(transactions),
             "outflow_count": len(outflows),
@@ -511,6 +599,10 @@ def import_bank_csv(
             "subscription_count": len(subscriptions),
             "subscription_monthly_total": round(
                 sum(s["monthly_cost"] for s in subscriptions), 2,
+            ),
+            "committed_outflow_count": len(committed),
+            "committed_outflow_monthly_total": round(
+                sum(c["monthly_amount"] for c in committed), 2,
             ),
             "date_range": _date_range(transactions),
             "months_covered": _infer_months(transactions),
@@ -566,13 +658,28 @@ def _parse_row(row: dict[str, str], fmt: BankFormat) -> Transaction:
     except (ValueError, KeyError) as e:
         raise ImportCsvError(f"Failed to parse row {row}: {e}") from e
 
+    payment_method = _parse_payment_method(row, fmt)
+
     return Transaction(
         txn_date=txn_date,
         description=description,
         amount=amount,
         bank=fmt.name,
+        payment_method=payment_method,
         raw=dict(row),
     )
+
+
+def _parse_payment_method(row: dict[str, str], fmt: BankFormat) -> str | None:
+    """v5.2-07: extract a normalised payment method from the CSV row.
+
+    Returns one of 'direct_debit', 'standing_order', 'card', 'transfer',
+    or None if the format doesn't expose a type column.
+    """
+    if not fmt.type_field or not fmt.type_mapping:
+        return None
+    raw_type = (row.get(fmt.type_field) or "").strip().lower()
+    return fmt.type_mapping.get(raw_type)
 
 
 def _parse_date(value: str, formats: tuple[str, ...]) -> date:

@@ -17,9 +17,11 @@ from engine.import_csv import (
     _normalise_merchant,
     _parse_amount,
     _parse_date,
+    _parse_payment_method,
     _score_match,
     aggregate_to_expenses,
     categorise_transactions,
+    detect_committed_outflows,
     detect_income_transactions,
     detect_recurring_transactions,
     detect_subscriptions,
@@ -815,3 +817,187 @@ class TestSubscriptionInsight:
         cashflow = {"net_income": {"monthly": 0}}
         result = _subscription_insights(profile, cashflow)
         assert result["pct_of_net_income"] is None
+
+
+# ---------------------------------------------------------------------------
+# v5.2-07: Payment method parsing and committed outflows
+# ---------------------------------------------------------------------------
+
+def _dd_txns(name: str, amount: float, months: int = 3) -> list[Transaction]:
+    """Build monthly direct-debit outflow transactions."""
+    return [
+        Transaction(
+            date(2026, 1 + i, 1), name, -amount, "monzo",
+            payment_method="direct_debit",
+        )
+        for i in range(months)
+    ]
+
+
+def _so_txns(name: str, amount: float, months: int = 3) -> list[Transaction]:
+    """Build monthly standing-order outflow transactions."""
+    return [
+        Transaction(
+            date(2026, 1 + i, 1), name, -amount, "monzo",
+            payment_method="standing_order",
+        )
+        for i in range(months)
+    ]
+
+
+class TestPaymentMethodParsing:
+    def _monzo_fmt(self):
+        return next(f for f in BANK_FORMATS if f.name == "monzo")
+
+    def _lloyds_fmt(self):
+        return next(f for f in BANK_FORMATS if f.name == "lloyds")
+
+    def _natwest_fmt(self):
+        return next(f for f in BANK_FORMATS if f.name == "natwest")
+
+    def test_monzo_direct_debit(self):
+        row = {"Type": "Direct debit"}
+        assert _parse_payment_method(row, self._monzo_fmt()) == "direct_debit"
+
+    def test_monzo_card_payment(self):
+        row = {"Type": "Card payment"}
+        assert _parse_payment_method(row, self._monzo_fmt()) == "card"
+
+    def test_monzo_standing_order(self):
+        row = {"Type": "Standing order"}
+        assert _parse_payment_method(row, self._monzo_fmt()) == "standing_order"
+
+    def test_monzo_unknown_type_returns_none(self):
+        row = {"Type": "Pot transfer"}
+        assert _parse_payment_method(row, self._monzo_fmt()) is None
+
+    def test_lloyds_dd(self):
+        row = {"Transaction Type": "DD"}
+        assert _parse_payment_method(row, self._lloyds_fmt()) == "direct_debit"
+
+    def test_lloyds_deb(self):
+        row = {"Transaction Type": "DEB"}
+        assert _parse_payment_method(row, self._lloyds_fmt()) == "card"
+
+    def test_natwest_d_d(self):
+        row = {"Type": "D/D"}
+        assert _parse_payment_method(row, self._natwest_fmt()) == "direct_debit"
+
+    def test_natwest_s_o(self):
+        row = {"Type": "S/O"}
+        assert _parse_payment_method(row, self._natwest_fmt()) == "standing_order"
+
+    def test_no_type_field_returns_none(self):
+        barclays = next(f for f in BANK_FORMATS if f.name == "barclays")
+        row = {"anything": "value"}
+        assert _parse_payment_method(row, barclays) is None
+
+    def test_case_insensitive(self):
+        row = {"Type": "DIRECT DEBIT"}
+        assert _parse_payment_method(row, self._monzo_fmt()) == "direct_debit"
+
+    def test_monzo_csv_parses_payment_method(self, tmp_path):
+        csv_path = tmp_path / "monzo.csv"
+        csv_path.write_text(
+            "Date,Time,Type,Name,Emoji,Category,Amount,Currency,Local amount,"
+            "Local currency,Notes and #tags,Address,Receipt,Description,"
+            "Category split,Money Out,Money In\n"
+            "01/03/2026,08:30:00,Direct debit,Octopus Energy,,Bills,-95.00,"
+            "GBP,-95.00,GBP,,,,,,-95.00,\n",
+            encoding="utf-8",
+        )
+        txns = parse_csv(csv_path)
+        assert len(txns) == 1
+        assert txns[0].payment_method == "direct_debit"
+
+
+class TestDetectCommittedOutflows:
+    def test_direct_debits_detected(self):
+        txns = _dd_txns("British Gas", 85.00, months=3)
+        committed = detect_committed_outflows(txns)
+        assert len(committed) == 1
+        assert committed[0]["payment_method"] == "direct_debit"
+        assert committed[0]["monthly_amount"] == 85.00
+        assert committed[0]["occurrences"] == 3
+
+    def test_standing_orders_detected(self):
+        txns = _so_txns("Landlord Rent", 1100.00, months=3)
+        committed = detect_committed_outflows(txns)
+        assert len(committed) == 1
+        assert committed[0]["payment_method"] == "standing_order"
+
+    def test_card_payments_excluded(self):
+        txns = [
+            Transaction(date(2026, 1, 15), "Tesco", -45.00, "monzo", payment_method="card"),
+            Transaction(date(2026, 2, 15), "Tesco", -45.00, "monzo", payment_method="card"),
+            Transaction(date(2026, 3, 15), "Tesco", -45.00, "monzo", payment_method="card"),
+        ]
+        committed = detect_committed_outflows(txns)
+        assert committed == []
+
+    def test_no_payment_method_excluded(self):
+        txns = _monthly_txns("Some Service", 50.00, months=3)
+        committed = detect_committed_outflows(txns)
+        assert committed == []
+
+    def test_single_occurrence_excluded(self):
+        txns = _dd_txns("One-off DD", 200.00, months=1)
+        committed = detect_committed_outflows(txns)
+        assert committed == []
+
+    def test_inflows_excluded(self):
+        txns = [
+            Transaction(date(2026, 1, 5), "Salary", 2500.00, "monzo", payment_method="transfer"),
+            Transaction(date(2026, 2, 5), "Salary", 2500.00, "monzo", payment_method="transfer"),
+        ]
+        committed = detect_committed_outflows(txns)
+        assert committed == []
+
+    def test_mixed_dd_and_card_separates_correctly(self):
+        txns = [
+            *_dd_txns("Octopus Energy", 95.00, months=3),
+            Transaction(date(2026, 1, 15), "Tesco", -45.00, "monzo", payment_method="card"),
+            Transaction(date(2026, 2, 15), "Tesco", -45.00, "monzo", payment_method="card"),
+        ]
+        committed = detect_committed_outflows(txns)
+        assert len(committed) == 1
+        assert "octopus" in committed[0]["merchant_key"]
+
+    def test_sorted_by_amount_descending(self):
+        txns = (
+            _dd_txns("Council Tax", 150.00, months=3)
+            + _dd_txns("British Gas", 85.00, months=3)
+            + _so_txns("Rent", 1100.00, months=3)
+        )
+        committed = detect_committed_outflows(txns)
+        amounts = [c["monthly_amount"] for c in committed]
+        assert amounts == sorted(amounts, reverse=True)
+        assert committed[0]["monthly_amount"] == 1100.00
+
+    def test_preserves_category_from_categorisation(self):
+        txns = _dd_txns("British Gas", 85.00, months=3)
+        for t in txns:
+            t.category = "housing"
+            t.sub_category = "utilities_monthly"
+        committed = detect_committed_outflows(txns)
+        assert committed[0]["category"] == "housing"
+        assert committed[0]["sub_category"] == "utilities_monthly"
+
+    def test_import_bank_csv_includes_committed_outflows(self, tmp_path):
+        csv_path = tmp_path / "monzo.csv"
+        csv_path.write_text(
+            "Date,Time,Type,Name,Emoji,Category,Amount,Currency,Local amount,"
+            "Local currency,Notes and #tags,Address,Receipt,Description,"
+            "Category split,Money Out,Money In\n"
+            "01/01/2026,08:00:00,Direct debit,British Gas,,Bills,-85.00,"
+            "GBP,-85.00,GBP,,,,,,-85.00,\n"
+            "01/02/2026,08:00:00,Direct debit,British Gas,,Bills,-85.00,"
+            "GBP,-85.00,GBP,,,,,,-85.00,\n"
+            "01/03/2026,08:00:00,Direct debit,British Gas,,Bills,-85.00,"
+            "GBP,-85.00,GBP,,,,,,-85.00,\n",
+            encoding="utf-8",
+        )
+        result = import_bank_csv(csv_path)
+        assert "committed_outflows" in result
+        assert result["summary"]["committed_outflow_count"] >= 1
+        assert result["summary"]["committed_outflow_monthly_total"] >= 85.00
