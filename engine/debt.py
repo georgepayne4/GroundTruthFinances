@@ -33,6 +33,8 @@ def analyse_debt(profile: ProfileDict, assumptions: AssumptionsDict) -> DebtResu
     personal = profile.get("personal", {})
     gross_monthly = inc.get("_total_gross_monthly", 0)
     primary_gross = inc.get("primary_gross_annual", 0)
+    if primary_gross <= 0:
+        logger.warning("primary_gross_annual is zero or missing — debt-to-income ratio will be invalid")
     age = personal.get("age", 30)
     debt_cfg = assumptions.get("debt", {})
     sl_cfg = assumptions.get("student_loans", {})

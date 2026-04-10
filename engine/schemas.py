@@ -206,6 +206,8 @@ class LifeEventSimulationConfig(BaseModel):
     surplus_allocation_liquid_pct: float = Field(ge=0.0, le=1.0)
     surplus_allocation_investment_pct: float = Field(ge=0.0, le=1.0)
     debt_principal_fraction: float = Field(ge=0.0, le=1.0)
+    max_effective_tax_rate: float = Field(default=0.60, ge=0.0, le=1.0)
+    net_worth_drop_warning_pct: float = Field(default=0.20, ge=0.0, le=1.0)
 
 
 class GoalPrerequisitesConfig(BaseModel):
@@ -354,6 +356,7 @@ class ChildCostsConfig(BaseModel):
 
 class AssumptionsSchema(BaseModel):
     """Complete schema for assumptions.yaml."""
+    schema_version: int = Field(default=1, ge=1)
     tax_year: str
     effective_from: str
     effective_to: str

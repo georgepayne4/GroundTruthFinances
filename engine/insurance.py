@@ -40,6 +40,8 @@ def assess_insurance(
     age = personal.get("age", 30)
     dependents = personal.get("dependents", 0)
     primary_gross = inc.get("primary_gross_annual", 0)
+    if primary_gross <= 0:
+        logger.warning("primary_gross_annual is zero or missing — insurance recommendations will be £0")
     partner_gross = inc.get("partner_gross_annual", 0)
     net_monthly = cashflow.get("net_income", {}).get("monthly", 0)
     total_debt = profile.get("_debt_summary", {}).get("total_balance", 0)
@@ -394,10 +396,12 @@ def _survivor_security(
     Model whether the surviving partner can maintain the household
     on a single income if the primary earner dies.
     """
-    # Estimate net income for each partner individually (rough: 70% of gross)
-    primary_net_monthly = primary_gross * 0.70 / 12
-    partner_net_monthly = partner_gross * 0.70 / 12
-    cashflow.get("net_income", {}).get("monthly", 0)
+    # Derive net-to-gross ratio from cashflow (replaces hardcoded 0.70)
+    total_gross = cashflow.get("income", {}).get("total_gross_annual", 0)
+    net_annual = cashflow.get("net_income", {}).get("annual", 0)
+    net_to_gross = (net_annual / total_gross) if total_gross > 0 else 0.70
+    primary_net_monthly = primary_gross * net_to_gross / 12
+    partner_net_monthly = partner_gross * net_to_gross / 12
 
     mortgage_payment = 0
     if mortgage_analysis.get("applicable"):

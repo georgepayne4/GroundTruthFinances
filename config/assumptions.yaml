@@ -4,6 +4,9 @@
 # Format: # Source: <authority> <date/tax-year>
 # ==============================================================================
 
+# Schema version — increment on structural changes to this file
+schema_version: 1                      # Source: Internal — bump when adding/removing/renaming keys
+
 # T3-5: Tax year and policy metadata
 tax_year: "2025/26"                    # Source: HMRC tax year
 effective_from: "2025-04-06"
@@ -176,6 +179,8 @@ life_event_simulation:
   surplus_allocation_liquid_pct: 0.60  # Source: Internal model
   surplus_allocation_investment_pct: 0.40
   debt_principal_fraction: 0.70
+  max_effective_tax_rate: 0.60         # Source: UK additional rate 45% + NI; cap for estimation
+  net_worth_drop_warning_pct: 0.20     # Source: Internal model — warn if net worth drops > 20% YoY
 
 # T1-1: Goal prerequisite rules
 goal_prerequisites:

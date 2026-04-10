@@ -288,9 +288,11 @@ class TestCategoryRules:
         assert "living" in rules
         assert "groceries_monthly" in rules["living"]
 
-    def test_load_missing_file_raises(self, tmp_path: Path):
-        with pytest.raises(ImportCsvError, match="not found"):
-            load_category_rules(tmp_path / "nope.yaml")
+    def test_load_missing_file_returns_fallback(self, tmp_path: Path):
+        rules = load_category_rules(tmp_path / "nope.yaml")
+        assert isinstance(rules, dict)
+        assert "living" in rules
+        assert "groceries_monthly" in rules["living"]
 
 
 # ---------------------------------------------------------------------------

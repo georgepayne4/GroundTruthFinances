@@ -96,7 +96,7 @@ def simulate_life_events(
         liquid_savings=sav.get("_total_liquid", 0),
         investments=sav.get("pension_balance", 0) + sav.get("other_investments", 0),
         total_debt=profile.get("_debt_summary", {}).get("total_balance", 0),
-        tax_rate=_effective_tax_rate(cashflow),
+        tax_rate=_effective_tax_rate(cashflow, sim_cfg.get("max_effective_tax_rate", 0.60)),
     )
 
     # T2-4: Child cost model
@@ -273,9 +273,10 @@ def simulate_life_events(
             })
 
         # Net worth dip warning
+        nw_drop_pct = sim_cfg.get("net_worth_drop_warning_pct", 0.20)
         if year > 0 and len(timeline) > 0:
             prev_nw = timeline[-1]["net_worth"]
-            if net_worth < prev_nw * 0.8 and prev_nw > 0:
+            if net_worth < prev_nw * (1 - nw_drop_pct) and prev_nw > 0:
                 milestones.append({
                     "year": year,
                     "age": age + year,
@@ -430,10 +431,10 @@ class _SimState:
         self.tax_rate = tax_rate
 
 
-def _effective_tax_rate(cashflow: dict) -> float:
+def _effective_tax_rate(cashflow: dict, max_rate: float = 0.60) -> float:
     """Derive effective tax rate from cashflow analysis."""
     gross = cashflow.get("income", {}).get("total_gross_annual", 0)
     deductions = cashflow.get("deductions", {}).get("total_deductions_annual", 0)
     if gross <= 0:
         return 0.25
-    return min(0.60, deductions / gross)
+    return min(max_rate, deductions / gross)

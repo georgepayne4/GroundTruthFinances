@@ -45,6 +45,8 @@ def analyse_cashflow(profile: ProfileDict, assumptions: AssumptionsDict) -> Cash
     # ------------------------------------------------------------------
     tax_cfg = assumptions.get("tax", {})
     primary_gross = inc.get("primary_gross_annual", 0)
+    if primary_gross <= 0:
+        logger.warning("primary_gross_annual is zero or missing — all income-dependent calculations will be skewed")
     # T2-1: Partner section takes precedence over legacy income field
     partner_gross = partner.get("gross_salary", inc.get("partner_gross_annual", 0))
 

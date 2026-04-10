@@ -784,13 +784,23 @@ def import_bank_csv(
     }
 
 
+_FALLBACK_CATEGORY_RULES: dict[str, dict[str, list[str]]] = {
+    "housing": {"rent_monthly": ["rent", "landlord"], "utilities_monthly": ["energy", "water", "gas", "electric"]},
+    "transport": {"fuel_monthly": ["shell", "bp", "esso", "petrol"], "public_transport_monthly": ["tfl", "trainline", "uber"]},
+    "living": {"groceries_monthly": ["tesco", "sainsbury", "asda", "aldi", "lidl", "waitrose"], "dining_out_monthly": ["restaurant", "deliveroo", "just eat"]},
+    "other": {"miscellaneous_monthly": ["amazon", "argos"]},
+}
+
+
 def load_category_rules(path: str | Path | None = None) -> dict[str, dict[str, list[str]]]:
-    """Load the category rules YAML. Defaults to config/category_rules.yaml."""
+    """Load the category rules YAML. Defaults to config/category_rules.yaml.
+    Falls back to minimal embedded rules if file is missing."""
     if path is None:
         path = Path(__file__).resolve().parent.parent / "config" / "category_rules.yaml"
     path = Path(path)
     if not path.exists():
-        raise ImportCsvError(f"Category rules file not found: {path}")
+        logger.warning("Category rules file not found: %s — using embedded fallback", path)
+        return _FALLBACK_CATEGORY_RULES
     with open(path, encoding="utf-8") as fh:
         rules = yaml.safe_load(fh) or {}
     return rules

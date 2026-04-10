@@ -110,10 +110,19 @@ def _check_personal(profile: dict) -> list[ValidationFlag]:
 
     risk = personal.get("risk_profile", "").lower()
     valid_risk = {"conservative", "moderate", "aggressive", "very_aggressive"}
-    if risk and risk not in valid_risk:
+    if not risk:
+        flags.append(ValidationFlag("personal.risk_profile", Severity.INFO,
+                                    "Risk profile not specified — defaulting to 'moderate'.",
+                                    f"Set risk_profile to one of: {', '.join(sorted(valid_risk))}."))
+    elif risk not in valid_risk:
         flags.append(ValidationFlag("personal.risk_profile", Severity.WARNING,
                                     f"Unrecognised risk profile '{risk}'.",
                                     f"Use one of: {', '.join(sorted(valid_risk))}."))
+
+    if "employment_type" not in personal:
+        flags.append(ValidationFlag("personal.employment_type", Severity.INFO,
+                                    "Employment type not specified — defaulting to 'employed'.",
+                                    "Set to employed, self_employed, or contractor."))
 
     return flags
 
@@ -261,6 +270,19 @@ def _check_savings(profile: dict, assumptions: dict) -> list[ValidationFlag]:
     sav = profile.get("savings", {})
     exp = profile.get("expenses", {})
     monthly_exp = exp.get("_total_monthly", 0)
+
+    # Warn on missing key savings fields that downstream modules rely on
+    key_savings_fields = [
+        ("emergency_fund", "Emergency fund balance"),
+        ("pension_balance", "Pension balance"),
+    ]
+    for field, label in key_savings_fields:
+        if field not in sav:
+            flags.append(ValidationFlag(
+                f"savings.{field}", Severity.INFO,
+                f"{label} not specified — defaulting to £0.",
+                f"Add savings.{field} for accurate analysis.",
+            ))
 
     ef = sav.get("emergency_fund", 0)
     min_months = assumptions.get("debt", {}).get("emergency_fund_months", 3)

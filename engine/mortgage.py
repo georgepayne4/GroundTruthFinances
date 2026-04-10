@@ -52,6 +52,8 @@ def analyse_mortgage(
 
     partner = profile.get("partner", {})
     primary_gross = inc.get("primary_gross_annual", 0)
+    if primary_gross <= 0:
+        logger.warning("primary_gross_annual is zero or missing — borrowing capacity will be £0")
     partner_gross = partner.get("gross_salary", inc.get("partner_gross_annual", 0))
     surplus_monthly = cashflow.get("surplus", {}).get("monthly", 0)
     employment_type = personal.get("employment_type", "employed")

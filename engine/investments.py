@@ -140,6 +140,8 @@ def analyse_investments(
     total_invested = isa + lisa + pension + other_inv
 
     primary_gross = inc.get("primary_gross_annual", 0)
+    if primary_gross <= 0:
+        logger.warning("primary_gross_annual is zero or missing — pension projections will show no contributions")
     pension_personal_pct = sav.get("pension_personal_contribution_pct", 0)
     pension_employer_pct = sav.get("pension_employer_contribution_pct", 0)
     annual_pension_contribution = primary_gross * (pension_personal_pct + pension_employer_pct)
@@ -481,6 +483,7 @@ def analyse_investments(
     if aa_cfg:
         aa_check = _check_annual_allowance(
             primary_gross, annual_pension_contribution, aa_cfg,
+            assumptions.get("tax", {}),
         )
         if aa_check:
             result["pension_annual_allowance"] = aa_check
@@ -987,6 +990,7 @@ def _project_growth(
 
 def _check_annual_allowance(
     gross_income: float, total_contributions: float, aa_cfg: dict,
+    tax_cfg: dict | None = None,
 ) -> dict | None:
     """Check if pension contributions exceed the annual allowance.
 
@@ -1025,8 +1029,10 @@ def _check_annual_allowance(
 
     if breached:
         # Estimate tax charge — excess taxed at marginal rate
-        basic_thresh = 50270
-        if gross_income > 125140:
+        _tax = tax_cfg or {}
+        basic_thresh = _tax.get("basic_threshold", 50270)
+        higher_thresh = _tax.get("higher_threshold", 125140)
+        if gross_income > higher_thresh:
             charge_rate = aa_cfg.get("tax_charge_rate_additional", 0.45)
         elif gross_income > basic_thresh:
             charge_rate = aa_cfg.get("tax_charge_rate_higher", 0.40)
