@@ -1,0 +1,55 @@
+version: "3.9"
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - GROUNDTRUTH_ENV=production
+      - GROUNDTRUTH_DEV_MODE=0
+      - GROUNDTRUTH_API_KEY=${GROUNDTRUTH_API_KEY}
+      - GROUNDTRUTH_TOKEN_KEY=${GROUNDTRUTH_TOKEN_KEY}
+      - GROUNDTRUTH_CORS_ORIGINS=${GROUNDTRUTH_CORS_ORIGINS:-http://localhost:5173}
+      - GROUNDTRUTH_RATE_LIMIT_RPM=${GROUNDTRUTH_RATE_LIMIT_RPM:-60}
+      - DATABASE_URL=postgresql://groundtruth:${POSTGRES_PASSWORD}@db:5432/groundtruth
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=groundtruth
+      - POSTGRES_USER=groundtruth
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U groundtruth"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  pgdata:

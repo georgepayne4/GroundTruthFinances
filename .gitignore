@@ -18,6 +18,9 @@ outputs/
 .DS_Store
 Thumbs.db
 
+# Environment
+.env
+
 # Personal Config
 george_input.yaml
 
