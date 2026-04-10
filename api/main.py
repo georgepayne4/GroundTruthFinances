@@ -122,10 +122,38 @@ app.include_router(notifications_router)
 app.include_router(comparison_router)
 app.include_router(cashflow_actual_router)
 
+_GROUNDTRUTH_ENV = __import__("os").environ.get("GROUNDTRUTH_ENV", "development")
+_MAX_REQUEST_BODY_BYTES = 100 * 1024  # 100KB
+
 
 # ---------------------------------------------------------------------------
-# Middleware: audit logging + rate limiting
+# Middleware: HTTPS redirect, body size limit, audit logging, rate limiting
 # ---------------------------------------------------------------------------
+
+@app.middleware("http")
+async def security_middleware(request: Request, call_next) -> Response:
+    """Enforce HTTPS in production and reject oversized request bodies."""
+    # HTTPS enforcement in production
+    if _GROUNDTRUTH_ENV == "production":
+        forwarded_proto = request.headers.get("x-forwarded-proto", "")
+        if forwarded_proto == "http" or (not forwarded_proto and request.url.scheme == "http"):
+            https_url = str(request.url).replace("http://", "https://", 1)
+            return JSONResponse(
+                status_code=301,
+                content={"detail": "HTTPS required"},
+                headers={"Location": https_url},
+            )
+
+    # Request body size limit
+    content_length = request.headers.get("content-length")
+    if content_length and int(content_length) > _MAX_REQUEST_BODY_BYTES:
+        return JSONResponse(
+            status_code=413,
+            content={"detail": f"Request body too large (max {_MAX_REQUEST_BODY_BYTES // 1024}KB)"},
+        )
+
+    return await call_next(request)
+
 
 @app.middleware("http")
 async def audit_and_rate_limit(request: Request, call_next) -> Response:

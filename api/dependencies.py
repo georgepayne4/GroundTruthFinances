@@ -21,6 +21,14 @@ from api.database.session import get_db
 # Dev mode: single shared key for local testing (no DB required)
 _DEV_MODE = os.environ.get("GROUNDTRUTH_DEV_MODE", "1") == "1"
 _DEV_KEY = os.environ.get("GROUNDTRUTH_API_KEY", "dev-key-change-me")
+_ENV = os.environ.get("GROUNDTRUTH_ENV", "development")
+
+# Block startup with the default dev key in production
+if _ENV == "production" and _DEV_KEY == "dev-key-change-me":
+    raise RuntimeError(
+        "Cannot start in production with default dev API key. "
+        "Set GROUNDTRUTH_API_KEY to a secure value."
+    )
 
 
 def hash_api_key(key: str) -> str:

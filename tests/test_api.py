@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
 # Force in-memory SQLite before any app imports
 os.environ["DATABASE_URL"] = "sqlite://"
 
@@ -274,3 +276,60 @@ class TestGeneral:
         assert resp.status_code == 200
         schema = resp.json()
         assert schema["info"]["title"] == "GroundTruth Financial Planning API"
+
+
+# ---------------------------------------------------------------------------
+# Security (v7.3)
+# ---------------------------------------------------------------------------
+
+class TestSecurity:
+    def test_oversized_request_rejected(self):
+        """Request body > 100KB should be rejected."""
+        # Build an oversized profile
+        huge_profile = _minimal_profile()
+        huge_profile["_padding"] = "x" * (110 * 1024)
+        resp = client.post(
+            "/api/v1/validate",
+            json={"profile": huge_profile},
+            headers={**HEADERS, "content-length": str(200 * 1024)},
+        )
+        assert resp.status_code == 413
+
+    def test_xss_in_profile_name_sanitised(self):
+        """Profile name with script tags should be escaped in narrative."""
+        from engine.narrative import generate_narrative
+        from engine.pipeline import run_pipeline
+
+        profile = _minimal_profile()
+        profile["personal"]["name"] = '<script>alert("xss")</script>'
+        report, _, _ = run_pipeline(profile)
+        narrative = generate_narrative(report)
+        assert "<script>" not in narrative
+        assert "&lt;script&gt;" in narrative
+
+    def test_dev_key_block_in_production(self):
+        """GROUNDTRUTH_ENV=production should reject the default dev key."""
+        import importlib
+        import os
+
+        original_env = os.environ.get("GROUNDTRUTH_ENV")
+        original_key = os.environ.get("GROUNDTRUTH_API_KEY")
+        try:
+            os.environ["GROUNDTRUTH_ENV"] = "production"
+            os.environ["GROUNDTRUTH_API_KEY"] = "dev-key-change-me"
+            # Re-importing should raise RuntimeError
+            import api.dependencies as dep_mod
+            with pytest.raises(RuntimeError, match="Cannot start in production"):
+                importlib.reload(dep_mod)
+        finally:
+            # Restore original state
+            if original_env is None:
+                os.environ.pop("GROUNDTRUTH_ENV", None)
+            else:
+                os.environ["GROUNDTRUTH_ENV"] = original_env
+            if original_key is None:
+                os.environ.pop("GROUNDTRUTH_API_KEY", None)
+            else:
+                os.environ["GROUNDTRUTH_API_KEY"] = original_key
+            import api.dependencies as dep_mod
+            importlib.reload(dep_mod)

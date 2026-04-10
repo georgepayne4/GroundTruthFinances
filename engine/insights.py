@@ -49,8 +49,9 @@ def generate_insights(
     life_events: LifeEventsResult,
 ) -> InsightsResult:
     """Generate a structured set of advisor insights."""
+    import html
     personal = profile.get("personal", {})
-    name = personal.get("name", "Client")
+    name = html.escape(str(personal.get("name", "Client")), quote=True)
     conflicts = _detect_goal_event_conflicts(profile, cashflow, life_events)
     tax_opts = _tax_optimisation_insights(profile, assumptions, cashflow)
 

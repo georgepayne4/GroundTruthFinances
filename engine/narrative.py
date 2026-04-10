@@ -14,10 +14,16 @@ suitable for client delivery. Produces Markdown output with:
 
 from __future__ import annotations
 
+import html
 import logging
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
+
+
+def _sanitise(value: str) -> str:
+    """Escape HTML entities in user-provided strings to prevent XSS."""
+    return html.escape(str(value), quote=True)
 
 
 def generate_narrative(report: dict) -> str:
@@ -43,7 +49,7 @@ def generate_narrative(report: dict) -> str:
 
 def _header(report: dict) -> str:
     meta = report.get("meta", {})
-    name = meta.get("profile_name", "Unknown")
+    name = _sanitise(meta.get("profile_name", "Unknown"))
     age = meta.get("profile_age", "")
     date = meta.get("generated_at", datetime.now(timezone.utc).isoformat())[:10]
     scoring = report.get("scoring", {})

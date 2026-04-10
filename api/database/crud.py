@@ -19,6 +19,30 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Profile encryption at rest (v7.3)
+# ---------------------------------------------------------------------------
+
+def _encrypt_profile(plaintext: str) -> str:
+    """Encrypt profile YAML if encryption key is configured. Returns plaintext otherwise."""
+    try:
+        from api.banking.encryption import encrypt_token
+        return encrypt_token(plaintext)
+    except (RuntimeError, ImportError):
+        return plaintext
+
+
+def _decrypt_profile(stored: str) -> str:
+    """Decrypt profile YAML if it looks encrypted. Returns as-is if plaintext."""
+    if not stored or stored.startswith(("personal:", "---", "#")):
+        return stored  # Already plaintext YAML
+    try:
+        from api.banking.encryption import decrypt_token
+        return decrypt_token(stored)
+    except (RuntimeError, ImportError, Exception):
+        return stored  # Assume plaintext if decryption fails
+
+
+# ---------------------------------------------------------------------------
 # Users
 # ---------------------------------------------------------------------------
 
@@ -62,24 +86,30 @@ def set_user_api_key(db: Session, user_id: int, api_key_hash: str) -> User | Non
 # ---------------------------------------------------------------------------
 
 def create_profile(db: Session, user_id: int, name: str, yaml_content: str) -> Profile:
-    """Create or update a named profile for a user."""
+    """Create or update a named profile for a user. Encrypts content at rest."""
+    encrypted = _encrypt_profile(yaml_content)
     existing = (
         db.query(Profile)
         .filter(Profile.user_id == user_id, Profile.name == name)
         .first()
     )
     if existing:
-        existing.yaml_content = yaml_content
+        existing.yaml_content = encrypted
         existing.updated_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(existing)
         return existing
 
-    profile = Profile(user_id=user_id, name=name, yaml_content=yaml_content)
+    profile = Profile(user_id=user_id, name=name, yaml_content=encrypted)
     db.add(profile)
     db.commit()
     db.refresh(profile)
     return profile
+
+
+def get_profile_content(profile: Profile) -> str:
+    """Decrypt and return the YAML content from a profile."""
+    return _decrypt_profile(profile.yaml_content)
 
 
 def get_profile(db: Session, profile_id: int) -> Profile | None:
