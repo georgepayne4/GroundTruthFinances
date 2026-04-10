@@ -212,11 +212,16 @@ async def analyse(
     """Accept a JSON profile, run the full 15-stage pipeline, return the report."""
     from engine.pipeline import run_pipeline
 
-    report, profile, _flags = run_pipeline(
-        request.profile,
-        assumptions_override=request.assumptions,
-        assumptions_path=get_default_assumptions_path(),
-    )
+    try:
+        report, profile, _flags = run_pipeline(
+            request.profile,
+            assumptions_override=request.assumptions,
+            assumptions_path=get_default_assumptions_path(),
+        )
+    except Exception as exc:
+        logger.exception("Pipeline failed")
+        raise HTTPException(status_code=422, detail=f"Analysis failed: {exc}") from exc
+
     run_id = None
     try:
         run_id = crud.record_run(db, report, profile=profile)
@@ -385,11 +390,12 @@ async def list_profiles(
 )
 async def get_history(
     profile_name: str,
-    limit: int = Query(10, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=100),
+    cursor: int | None = Query(None, ge=0, description="Run ID to start after (cursor-based pagination)"),
     db: Session = Depends(get_db),
 ) -> HistoryResponse:
-    """Return recent runs for the given profile name."""
-    runs = crud.list_runs(db, limit=limit, profile_name=profile_name)
+    """Return recent runs for the given profile name. Supports cursor-based pagination."""
+    runs = crud.list_runs(db, limit=limit, profile_name=profile_name, cursor=cursor)
     return HistoryResponse(
         runs=[HistoryRun(**r) for r in runs],
         count=len(runs),
@@ -403,11 +409,12 @@ async def get_history(
     dependencies=[Depends(verify_api_key)],
 )
 async def get_all_history(
-    limit: int = Query(10, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=100),
+    cursor: int | None = Query(None, ge=0, description="Run ID to start after (cursor-based pagination)"),
     db: Session = Depends(get_db),
 ) -> HistoryResponse:
-    """Return recent runs across all profiles."""
-    runs = crud.list_runs(db, limit=limit)
+    """Return recent runs across all profiles. Supports cursor-based pagination."""
+    runs = crud.list_runs(db, limit=limit, cursor=cursor)
     return HistoryResponse(
         runs=[HistoryRun(**r) for r in runs],
         count=len(runs),
@@ -540,5 +547,104 @@ async def admin_audit_log(
     """Return recent audit log entries."""
     entries = crud.list_audit_log(db, limit=limit, user_id=user_id)
     return {"entries": entries, "count": len(entries)}
+
+
+# ---------------------------------------------------------------------------
+# Health & status (v7.4)
+# ---------------------------------------------------------------------------
+
+@app.get("/health", summary="Health check")
+async def health() -> dict[str, str]:
+    """Uptime monitor endpoint. Returns 200 if the API is running."""
+    return {"status": "ok"}
+
+
+@app.get(
+    "/api/v1/assumptions/status",
+    summary="Check assumptions staleness",
+    dependencies=[Depends(verify_api_key)],
+)
+async def assumptions_status() -> dict[str, Any]:
+    """Report whether the current assumptions are stale."""
+    from datetime import date
+
+    from engine.loader import load_assumptions
+
+    assumptions = load_assumptions(get_default_assumptions_path())
+    tax_year = assumptions.get("tax_year", "unknown")
+    effective_to = assumptions.get("effective_to", "")
+    stale = False
+    if effective_to:
+        import contextlib
+        with contextlib.suppress(ValueError, TypeError):
+            stale = date.today() > date.fromisoformat(effective_to)
+    return {
+        "tax_year": tax_year,
+        "effective_to": effective_to,
+        "stale": stale,
+        "schema_version": assumptions.get("schema_version", 0),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Standalone analysis endpoints (v7.4)
+# ---------------------------------------------------------------------------
+
+@app.post(
+    "/api/v1/sensitivity",
+    summary="Run sensitivity analysis only",
+    dependencies=[Depends(verify_api_key)],
+)
+async def run_sensitivity_endpoint(request: AnalyseRequest) -> dict[str, Any]:
+    """Run parameter sensitivity sweeps on a profile."""
+    from engine.loader import load_assumptions, normalise_profile
+
+    profile = normalise_profile(request.profile)
+    assumptions = request.assumptions or load_assumptions(get_default_assumptions_path())
+
+    from engine.cashflow import analyse_cashflow
+    from engine.debt import analyse_debt
+    from engine.investments import analyse_investments
+    from engine.mortgage import analyse_mortgage
+    from engine.sensitivity import run_sensitivity
+
+    try:
+        cashflow = analyse_cashflow(profile, assumptions)
+        debt = analyse_debt(profile, assumptions)
+        inv = analyse_investments(profile, assumptions, cashflow)
+        mortgage = analyse_mortgage(profile, assumptions, cashflow, debt)
+        result = run_sensitivity(profile, assumptions, cashflow, debt, inv, mortgage)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Sensitivity analysis failed: {exc}") from exc
+    return result
+
+
+@app.post(
+    "/api/v1/scenarios",
+    summary="Run scenario stress tests only",
+    dependencies=[Depends(verify_api_key)],
+)
+async def run_scenarios_endpoint(request: AnalyseRequest) -> dict[str, Any]:
+    """Run stress scenario modelling on a profile."""
+    from engine.loader import load_assumptions, normalise_profile
+
+    profile = normalise_profile(request.profile)
+    assumptions = request.assumptions or load_assumptions(get_default_assumptions_path())
+
+    from engine.cashflow import analyse_cashflow
+    from engine.debt import analyse_debt
+    from engine.investments import analyse_investments
+    from engine.mortgage import analyse_mortgage
+    from engine.scenarios import run_scenarios
+
+    try:
+        cashflow = analyse_cashflow(profile, assumptions)
+        debt = analyse_debt(profile, assumptions)
+        inv = analyse_investments(profile, assumptions, cashflow)
+        mortgage = analyse_mortgage(profile, assumptions, cashflow, debt)
+        result = run_scenarios(profile, assumptions, cashflow, debt, mortgage, inv)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Scenario analysis failed: {exc}") from exc
+    return result
 
 

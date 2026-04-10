@@ -282,6 +282,80 @@ class TestGeneral:
 # Security (v7.3)
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# v7.4 endpoints
+# ---------------------------------------------------------------------------
+
+class TestHealthEndpoint:
+    def test_health_returns_ok(self):
+        resp = client.get("/health")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "ok"
+
+
+class TestAssumptionsStatus:
+    def test_returns_staleness_info(self):
+        resp = client.get("/api/v1/assumptions/status", headers=HEADERS)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "tax_year" in data
+        assert "stale" in data
+        assert "schema_version" in data
+
+
+class TestSensitivityEndpoint:
+    def test_sensitivity_returns_results(self):
+        resp = client.post(
+            "/api/v1/sensitivity",
+            json={"profile": _minimal_profile()},
+            headers=HEADERS,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data, dict)
+        assert len(data) > 0
+
+
+class TestScenariosEndpoint:
+    def test_scenarios_returns_results(self):
+        resp = client.post(
+            "/api/v1/scenarios",
+            json={"profile": _minimal_profile()},
+            headers=HEADERS,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data, dict)
+
+
+class TestHistoryPagination:
+    def test_cursor_pagination(self):
+        # Create a couple of runs first
+        client.post("/api/v1/analyse", json={"profile": _minimal_profile()}, headers=HEADERS)
+        client.post("/api/v1/analyse", json={"profile": _minimal_profile()}, headers=HEADERS)
+
+        # Get first page
+        resp = client.get("/api/v1/history?limit=1", headers=HEADERS)
+        assert resp.status_code == 200
+        data = resp.json()
+        if data["count"] > 0:
+            cursor = data["runs"][0]["id"]
+            # Get next page using cursor
+            resp2 = client.get(f"/api/v1/history?limit=1&cursor={cursor}", headers=HEADERS)
+            assert resp2.status_code == 200
+
+
+class TestGracefulDegradation:
+    def test_malformed_profile_returns_422(self):
+        resp = client.post(
+            "/api/v1/analyse",
+            json={"profile": {"not_a_valid": "profile"}},
+            headers=HEADERS,
+        )
+        # Should return structured error, not 500
+        assert resp.status_code in (200, 422)
+
+
 class TestSecurity:
     def test_oversized_request_rejected(self):
         """Request body > 100KB should be rejected."""

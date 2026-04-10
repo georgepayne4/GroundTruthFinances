@@ -240,11 +240,15 @@ def get_run(db: Session, run_id: int) -> Run | None:
     return db.query(Run).filter(Run.id == run_id).first()
 
 
-def list_runs(db: Session, limit: int = 10, profile_name: str | None = None) -> list[dict[str, Any]]:
-    """Return recent runs as dicts (newest first)."""
+def list_runs(
+    db: Session, limit: int = 20, profile_name: str | None = None, cursor: int | None = None,
+) -> list[dict[str, Any]]:
+    """Return recent runs as dicts (newest first). Supports cursor-based pagination."""
     query = db.query(Run)
     if profile_name:
         query = query.filter(Run.profile_name == profile_name)
+    if cursor is not None:
+        query = query.filter(Run.id < cursor)
     rows = query.order_by(Run.id.desc()).limit(limit).all()
     return [
         {
