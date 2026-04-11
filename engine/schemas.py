@@ -354,6 +354,13 @@ class ChildCostsConfig(BaseModel):
     university_annual: int = Field(ge=0)
 
 
+class MonteCarloConfig(BaseModel):
+    num_simulations: int = Field(default=1000, ge=100, le=100000)
+    percentiles: list[int] = Field(default=[10, 25, 50, 75, 90])
+    random_seed: int | None = None
+    inflation_volatility: float = Field(default=0.01, ge=0.0, le=0.10)
+
+
 class AssumptionsSchema(BaseModel):
     """Complete schema for assumptions.yaml."""
     schema_version: int = Field(default=1, ge=1)
@@ -400,6 +407,7 @@ class AssumptionsSchema(BaseModel):
     insurance_cost_estimates: InsuranceCostEstimates
     advisory_cost_estimates: AdvisoryCostEstimates
     child_costs: ChildCostsConfig
+    monte_carlo: MonteCarloConfig | None = None
 
 
 # ---------------------------------------------------------------------------

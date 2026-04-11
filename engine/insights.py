@@ -693,6 +693,20 @@ def _investment_insights(investment_analysis: dict, personal: dict) -> list[str]
             f"Your pension is on track for a {replacement:.0f}% net income replacement ratio."
         )
 
+    # v8.1: Monte Carlo pension narrative
+    mc = pension.get("monte_carlo")
+    if mc:
+        narrative = mc.get("narrative", "")
+        if narrative:
+            insights.append(narrative)
+        p10 = mc.get("income_percentiles", {}).get("p10", 0)
+        p90 = mc.get("income_percentiles", {}).get("p90", 0)
+        if p10 and p90:
+            insights.append(
+                f"In the pessimistic scenario (10th percentile), retirement income is "
+                f"£{p10:,.0f}/year; in the optimistic scenario (90th), £{p90:,.0f}/year."
+            )
+
     # FA-6 + T1-2: Pension match optimisation with £-quantified ROI
     match = investment_analysis.get("pension_match_optimisation")
     if match:

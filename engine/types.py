@@ -92,6 +92,7 @@ class InvestmentsResult(TypedDict, total=False):
     tax_efficiency: dict[str, Any]
     rebalancing: dict[str, Any]
     pension_annual_allowance: dict[str, Any]
+    monte_carlo_summary: dict[str, Any]
 
 
 # ---------------------------------------------------------------------------

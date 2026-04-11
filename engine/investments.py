@@ -488,6 +488,44 @@ def analyse_investments(
         if aa_check:
             result["pension_annual_allowance"] = aa_check
 
+    # v8.1: Monte Carlo projections (opt-in via assumptions)
+    mc_cfg = assumptions.get("monte_carlo")
+    if mc_cfg:
+        from engine.monte_carlo import run_pension_simulation, run_simulation
+
+        vol = model["historical_volatility"]
+        mc_pctls = mc_cfg.get("percentiles", [10, 25, 50, 75, 90])
+        mc_seed = mc_cfg.get("random_seed")
+        mc_sims = mc_cfg.get("num_simulations", 1000)
+
+        mc_growth = run_simulation(
+            present_value=total_invested,
+            monthly_contribution=monthly_pension_contribution,
+            annual_return=net_return,
+            annual_volatility=vol,
+            years=years_to_retirement,
+            inflation=inflation,
+            num_simulations=mc_sims,
+            percentiles=mc_pctls,
+            random_seed=mc_seed,
+        )
+
+        mc_pension = run_pension_simulation(
+            pension_balance=pension,
+            monthly_contribution=monthly_pension_contribution,
+            annual_return=net_return,
+            annual_volatility=vol,
+            years_to_retirement=years_to_retirement,
+            inflation=inflation,
+            safe_withdrawal_rate=safe_withdrawal_rate,
+            target_income=retire_cfg.get("default_income_target", 30000),
+            state_pension_real=state_pension_at_retirement_real,
+            mc_cfg=mc_cfg,
+        )
+
+        result["pension_analysis"]["monte_carlo"] = mc_pension
+        result["monte_carlo_summary"] = mc_growth
+
     return result
 
 

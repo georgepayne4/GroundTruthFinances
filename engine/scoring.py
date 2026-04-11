@@ -298,6 +298,15 @@ def _score_investments(investment_analysis: dict, weight: float) -> dict:
     if monthly_contrib > 0:
         score += 20
 
+    # v8.1: MC probability bonus/penalty
+    mc = pension.get("monte_carlo")
+    if mc:
+        prob = mc.get("probability_of_target_pct", 50)
+        if prob >= 80:
+            score += 5
+        elif prob < 40:
+            score -= 5
+
     return {
         "score": round(min(100, max(0, score)), 1),
         "weight": weight,

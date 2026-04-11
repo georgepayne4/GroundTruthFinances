@@ -318,3 +318,10 @@ child_costs:
   after_school_5_11_monthly: 300
   secondary_12_17_monthly: 200
   university_annual: 12000             # Source: SLC maintenance + tuition fee contribution
+
+# v8.1: Monte Carlo simulation parameters
+monte_carlo:
+  num_simulations: 1000                # Source: Internal — balance of accuracy vs speed
+  percentiles: [10, 25, 50, 75, 90]    # Source: Industry standard reporting bands
+  random_seed: null                    # Source: null = non-deterministic; set for reproducibility
+  inflation_volatility: 0.01           # Source: BoE inflation targeting tolerance estimate

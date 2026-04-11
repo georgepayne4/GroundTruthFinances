@@ -67,3 +67,45 @@ class TestInvestmentAnalysis:
         aa = result["pension_annual_allowance"]
         assert "breached" in aa
         assert "effective_allowance" in aa
+
+
+class TestMonteCarloIntegration:
+    def test_mc_summary_present_when_configured(self, sample_profile, assumptions):
+        from engine.cashflow import analyse_cashflow
+        assumptions["monte_carlo"] = {
+            "num_simulations": 200, "percentiles": [10, 50, 90], "random_seed": 42,
+        }
+        cashflow = analyse_cashflow(sample_profile, assumptions)
+        result = analyse_investments(sample_profile, assumptions, cashflow)
+        assert "monte_carlo_summary" in result
+        assert result["monte_carlo_summary"]["num_simulations"] == 200
+        assert "terminal_real" in result["monte_carlo_summary"]
+
+    def test_mc_absent_when_not_configured(self, sample_profile, assumptions):
+        from engine.cashflow import analyse_cashflow
+        assumptions.pop("monte_carlo", None)
+        cashflow = analyse_cashflow(sample_profile, assumptions)
+        result = analyse_investments(sample_profile, assumptions, cashflow)
+        assert "monte_carlo_summary" not in result
+
+    def test_pension_mc_fields_present(self, sample_profile, assumptions):
+        from engine.cashflow import analyse_cashflow
+        assumptions["monte_carlo"] = {
+            "num_simulations": 200, "percentiles": [10, 50, 90], "random_seed": 42,
+        }
+        cashflow = analyse_cashflow(sample_profile, assumptions)
+        result = analyse_investments(sample_profile, assumptions, cashflow)
+        mc = result["pension_analysis"].get("monte_carlo")
+        assert mc is not None
+        assert "narrative" in mc
+        assert "probability_of_target_pct" in mc
+        assert "pension_pot_percentiles" in mc
+
+    def test_backward_compatibility_without_mc(self, minimal_profile, assumptions):
+        from engine.cashflow import analyse_cashflow
+        assumptions.pop("monte_carlo", None)
+        cashflow = analyse_cashflow(minimal_profile, assumptions)
+        result = analyse_investments(minimal_profile, assumptions, cashflow)
+        assert "pension_analysis" in result
+        assert "monte_carlo" not in result.get("pension_analysis", {})
+        assert "monte_carlo_summary" not in result
