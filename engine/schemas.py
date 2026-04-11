@@ -354,6 +354,15 @@ class ChildCostsConfig(BaseModel):
     university_annual: int = Field(ge=0)
 
 
+class LifetimeCashflowConfig(BaseModel):
+    retirement_spending_pct_of_pre: float = Field(default=0.70, ge=0.0, le=1.0)
+    late_life_spending_reduction: float = Field(default=0.15, ge=0.0, le=0.50)
+    care_cost_annual_home: int = Field(default=15000, ge=0)
+    care_cost_annual_residential: int = Field(default=40000, ge=0)
+    care_provision_start_age: int = Field(default=85, ge=70, le=100)
+    state_pension_deferral_rate: float = Field(default=0.058, ge=0.0, le=0.20)
+
+
 class MonteCarloConfig(BaseModel):
     num_simulations: int = Field(default=1000, ge=100, le=100000)
     percentiles: list[int] = Field(default=[10, 25, 50, 75, 90])
@@ -407,6 +416,7 @@ class AssumptionsSchema(BaseModel):
     insurance_cost_estimates: InsuranceCostEstimates
     advisory_cost_estimates: AdvisoryCostEstimates
     child_costs: ChildCostsConfig
+    lifetime_cashflow: LifetimeCashflowConfig | None = None
     monte_carlo: MonteCarloConfig | None = None
 
 

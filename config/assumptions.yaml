@@ -319,6 +319,15 @@ child_costs:
   secondary_12_17_monthly: 200
   university_annual: 12000             # Source: SLC maintenance + tuition fee contribution
 
+# v8.2: Lifetime cashflow model parameters
+lifetime_cashflow:
+  retirement_spending_pct_of_pre: 0.70   # Source: PLSA — retirees typically spend 70% of pre-retirement
+  late_life_spending_reduction: 0.15     # Source: IFS — spending drops ~15% after age 80
+  care_cost_annual_home: 15000           # Source: Age UK — home care average 2025
+  care_cost_annual_residential: 40000    # Source: Age UK — residential care average 2025
+  care_provision_start_age: 85           # Source: Actuarial estimate — model care from age 85
+  state_pension_deferral_rate: 0.058     # Source: DWP — 5.8% per year of deferral
+
 # v8.1: Monte Carlo simulation parameters
 monte_carlo:
   num_simulations: 1000                # Source: Internal — balance of accuracy vs speed

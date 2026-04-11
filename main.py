@@ -344,6 +344,19 @@ def main() -> None:
                 print(f"    {s['label']}")
 
     # ------------------------------------------------------------------
+    # 13b. Lifetime cashflow projection (v8.2)
+    # ------------------------------------------------------------------
+    from engine.lifetime_cashflow import project_lifetime_cashflow
+    lifetime_cf = project_lifetime_cashflow(
+        profile, assumptions, cashflow, investment_result, mortgage_result,
+    )
+    lcf_summary = lifetime_cf.get("summary", {})
+    if lcf_summary.get("fund_depletion_age"):
+        print(f"\nLifetime cashflow: funds deplete at age {lcf_summary['fund_depletion_age']}")
+    else:
+        print(f"\nLifetime cashflow: funds last to age {lcf_summary.get('life_expectancy', '?')}")
+
+    # ------------------------------------------------------------------
     # 14. Advisor insights (T1-2, T1-3)
     # ------------------------------------------------------------------
     print("\nGenerating advisor insights...")
@@ -444,6 +457,7 @@ def main() -> None:
         estate=estate_result,
         sensitivity=sensitivity_result,
         assumptions_meta=assumptions_meta,
+        lifetime_cashflow=lifetime_cf,
     )
 
     saved_path = save_report(report, output_path)

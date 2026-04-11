@@ -21,6 +21,7 @@ from engine.insights import generate_insights
 from engine.insurance import assess_insurance
 from engine.investments import analyse_investments
 from engine.life_events import simulate_life_events
+from engine.lifetime_cashflow import project_lifetime_cashflow
 from engine.loader import load_assumptions, normalise_profile
 from engine.mortgage import analyse_mortgage
 from engine.report import assemble_report
@@ -96,6 +97,9 @@ def run_pipeline(
         mortgage_result, investment_result,
     )
     estate_result = analyse_estate(profile, assumptions, investment_result, mortgage_result, cashflow)
+    lifetime_cf = project_lifetime_cashflow(
+        profile, assumptions, cashflow, investment_result, mortgage_result,
+    )
     sensitivity_result = run_sensitivity(
         profile, assumptions, cashflow, debt_result,
         investment_result, mortgage_result,
@@ -129,6 +133,7 @@ def run_pipeline(
         estate=estate_result,
         sensitivity=sensitivity_result,
         assumptions_meta=assumptions_meta,
+        lifetime_cashflow=lifetime_cf,
     )
 
     return report, profile, flags
