@@ -49,6 +49,7 @@ def assemble_report(
     scenarios: ScenariosResult | None = None,
     estate: EstateResult | None = None,
     sensitivity: SensitivityResult | None = None,
+    assumptions_meta: dict | None = None,
 ) -> ReportDict:
     """
     Assemble all analysis results into the final report structure.
@@ -62,6 +63,7 @@ def assemble_report(
             "engine_version": engine.__version__,
             "profile_name": personal.get("name", "Unknown"),
             "profile_age": personal.get("age"),
+            "assumptions": assumptions_meta or {},
         },
         "validation": {
             "flags": validation_flags,

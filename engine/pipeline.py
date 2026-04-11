@@ -7,12 +7,15 @@ the CLI (main.py) and the API (api/main.py). No DB or API dependencies.
 from __future__ import annotations
 
 import logging
+import os
+from datetime import date
 from pathlib import Path
 from typing import Any
 
 from engine.cashflow import analyse_cashflow
 from engine.debt import analyse_debt
 from engine.estate import analyse_estate
+from engine.exceptions import AssumptionError
 from engine.goals import analyse_goals
 from engine.insights import generate_insights
 from engine.insurance import assess_insurance
@@ -27,6 +30,29 @@ from engine.sensitivity import run_sensitivity
 from engine.validator import validate_profile
 
 logger = logging.getLogger(__name__)
+
+
+def _check_assumptions_staleness(assumptions: dict[str, Any]) -> None:
+    """Block analysis if assumptions have expired (v7.6).
+
+    Only enforced when GROUNDTRUTH_ENV=production. In development, logs a warning.
+    """
+    effective_to = assumptions.get("effective_to", "")
+    if not effective_to:
+        return
+    try:
+        end_date = date.fromisoformat(effective_to)
+    except (ValueError, TypeError):
+        return
+    if date.today() <= end_date:
+        return
+
+    env = os.environ.get("GROUNDTRUTH_ENV", "development")
+    tax_year = assumptions.get("tax_year", "unknown")
+    msg = f"Assumptions expired (tax year {tax_year}, effective_to {effective_to})"
+    if env == "production":
+        raise AssumptionError(msg + " — update assumptions before running analysis")
+    logger.warning("%s — running in dev mode, proceeding anyway", msg)
 
 
 def run_pipeline(
@@ -48,6 +74,8 @@ def run_pipeline(
     else:
         path = assumptions_path or (Path(__file__).resolve().parent.parent / "config" / "assumptions.yaml")
         assumptions = load_assumptions(path)
+
+    _check_assumptions_staleness(assumptions)
 
     flags = validate_profile(profile, assumptions)
     flag_dicts = [f.to_dict() for f in flags]
@@ -78,6 +106,13 @@ def run_pipeline(
         scoring_result, life_event_result,
     )
 
+    assumptions_meta = {
+        "schema_version": assumptions.get("schema_version", 0),
+        "tax_year": assumptions.get("tax_year", "unknown"),
+        "effective_from": assumptions.get("effective_from", ""),
+        "effective_to": assumptions.get("effective_to", ""),
+    }
+
     report = assemble_report(
         profile=profile,
         validation_flags=flag_dicts,
@@ -93,6 +128,7 @@ def run_pipeline(
         scenarios=scenario_result,
         estate=estate_result,
         sensitivity=sensitivity_result,
+        assumptions_meta=assumptions_meta,
     )
 
     return report, profile, flags

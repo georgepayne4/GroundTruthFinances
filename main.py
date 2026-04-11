@@ -110,6 +110,10 @@ def main() -> None:
     profile = load_profile(profile_path)
     assumptions = load_assumptions(assumptions_path)
 
+    # v7.6: check assumptions staleness
+    from engine.pipeline import _check_assumptions_staleness
+    _check_assumptions_staleness(assumptions)
+
     # v5.2-02: optional bank CSV merge — runs before any analysis so the
     # whole pipeline sees the bank-derived expenses and inferred income.
     if args.bank_csv:
@@ -417,6 +421,13 @@ def main() -> None:
     print(f"\n{'=' * 60}")
     output_path = project_root / "outputs" / "report.json"
 
+    assumptions_meta = {
+        "schema_version": assumptions.get("schema_version", 0),
+        "tax_year": assumptions.get("tax_year", "unknown"),
+        "effective_from": assumptions.get("effective_from", ""),
+        "effective_to": assumptions.get("effective_to", ""),
+    }
+
     report = assemble_report(
         profile=profile,
         validation_flags=flag_dicts,
@@ -432,6 +443,7 @@ def main() -> None:
         scenarios=scenario_result,
         estate=estate_result,
         sensitivity=sensitivity_result,
+        assumptions_meta=assumptions_meta,
     )
 
     saved_path = save_report(report, output_path)

@@ -303,6 +303,17 @@ class TestAssumptionsStatus:
         assert "schema_version" in data
 
 
+class TestAssumptionsDiff:
+    def test_diff_returns_structure(self):
+        resp = client.post("/api/v1/assumptions/diff", headers=HEADERS)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "would_change" in data
+        assert "change_count" in data
+        assert "errors" in data
+        assert isinstance(data["would_change"], list)
+
+
 class TestSensitivityEndpoint:
     def test_sensitivity_returns_results(self):
         resp = client.post(

@@ -7,15 +7,18 @@ Each test exercises a real data path that spans 2+ modules.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from engine.cashflow import analyse_cashflow
 from engine.debt import analyse_debt
 from engine.estate import analyse_estate
+from engine.exceptions import AssumptionError
 from engine.goals import analyse_goals
 from engine.insights import generate_insights
 from engine.insurance import assess_insurance
@@ -24,7 +27,7 @@ from engine.life_events import simulate_life_events
 from engine.loader import load_assumptions, load_profile
 from engine.mortgage import analyse_mortgage
 from engine.narrative import generate_narrative
-from engine.pipeline import run_pipeline
+from engine.pipeline import _check_assumptions_staleness, run_pipeline
 from engine.report import assemble_report
 from engine.scenarios import run_scenarios
 from engine.scoring import calculate_scores
@@ -544,3 +547,46 @@ class TestEdgeCaseProfiles:
         report, _, _ = run_pipeline(profile)
         assert 0 <= report["scoring"]["overall_score"] <= 100
         assert report["debt"]["summary"]["total_balance"] > 0
+
+
+# ---------------------------------------------------------------------------
+# Assumptions governance (v7.6)
+# ---------------------------------------------------------------------------
+
+class TestAssumptionsStaleness:
+    def test_expired_assumptions_raise_in_production(self):
+        assumptions = {"effective_to": "2020-01-01", "tax_year": "2019/20"}
+        with patch.dict(os.environ, {"GROUNDTRUTH_ENV": "production"}), pytest.raises(AssumptionError, match="expired"):
+            _check_assumptions_staleness(assumptions)
+
+    def test_expired_assumptions_warn_in_dev(self):
+        assumptions = {"effective_to": "2020-01-01", "tax_year": "2019/20"}
+        with patch.dict(os.environ, {"GROUNDTRUTH_ENV": "development"}):
+            # Should not raise, just log warning
+            _check_assumptions_staleness(assumptions)
+
+    def test_valid_assumptions_pass(self):
+        assumptions = {"effective_to": "2099-12-31", "tax_year": "2025/26"}
+        _check_assumptions_staleness(assumptions)
+
+    def test_missing_effective_to_passes(self):
+        assumptions = {"tax_year": "2025/26"}
+        _check_assumptions_staleness(assumptions)
+
+    def test_invalid_date_format_passes(self):
+        assumptions = {"effective_to": "not-a-date", "tax_year": "2025/26"}
+        _check_assumptions_staleness(assumptions)
+
+    def test_pipeline_includes_assumption_metadata_in_report(self, full_profile, full_assumptions):
+        report, _, _ = run_pipeline(full_profile, assumptions_override=full_assumptions)
+        meta = report["meta"]
+        assert "assumptions" in meta
+        assert meta["assumptions"]["tax_year"] == full_assumptions.get("tax_year", "unknown")
+        assert "schema_version" in meta["assumptions"]
+        assert "effective_from" in meta["assumptions"]
+        assert "effective_to" in meta["assumptions"]
+
+    def test_pipeline_blocks_stale_assumptions_in_production(self, full_profile, full_assumptions):
+        stale = {**full_assumptions, "effective_to": "2020-01-01", "tax_year": "2019/20"}
+        with patch.dict(os.environ, {"GROUNDTRUTH_ENV": "production"}), pytest.raises(AssumptionError, match="expired"):
+            run_pipeline(full_profile, assumptions_override=stale)

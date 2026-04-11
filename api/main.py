@@ -86,9 +86,38 @@ def _check_rate_limit(key: str) -> bool:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Create database tables on startup (dev/test mode)."""
+    """Create database tables on startup and check assumptions freshness."""
     init_db()
+    _try_auto_update_assumptions()
     yield
+
+
+def _try_auto_update_assumptions() -> None:
+    """If assumptions are stale, attempt an auto-update before first analysis."""
+    from datetime import date
+
+    from engine.loader import load_assumptions
+
+    try:
+        assumptions = load_assumptions(get_default_assumptions_path())
+        effective_to = assumptions.get("effective_to", "")
+        if not effective_to:
+            return
+        end_date = date.fromisoformat(effective_to)
+        if date.today() <= end_date:
+            return
+
+        logger.warning("Assumptions stale (effective_to=%s), attempting auto-update", effective_to)
+        from engine.assumption_updater import run_update
+        result = run_update(assumptions)
+        if result.changes:
+            from engine.assumption_updater import save_assumptions_yaml
+            save_assumptions_yaml(assumptions, str(get_default_assumptions_path()))
+            logger.info("Auto-updated %d assumption(s) on startup", len(result.changes))
+        if result.errors:
+            logger.warning("Auto-update partial failure: %s", result.errors)
+    except Exception:
+        logger.warning("Assumptions auto-update check failed (non-fatal)", exc_info=True)
 
 
 app = FastAPI(
@@ -303,6 +332,38 @@ async def update_assumptions() -> dict[str, Any]:
                 "key": c.key_path,
                 "old": c.old_value,
                 "new": c.new_value,
+                "source": c.source,
+            }
+            for c in result.changes
+        ],
+        "change_count": len(result.changes),
+        "errors": result.errors,
+        "source_date": result.source_date,
+    }
+
+
+@app.post(
+    "/api/v1/assumptions/diff",
+    summary="Compare current assumptions against latest available from public sources",
+    dependencies=[Depends(verify_api_key)],
+)
+async def assumptions_diff() -> dict[str, Any]:
+    """Dry-run the auto-update: show what would change without applying."""
+    import copy
+
+    from engine.assumption_updater import run_update
+    from engine.loader import load_assumptions
+
+    current = load_assumptions(get_default_assumptions_path())
+    draft = copy.deepcopy(current)
+    result = run_update(draft)
+
+    return {
+        "would_change": [
+            {
+                "key": c.key_path,
+                "current": c.old_value,
+                "latest": c.new_value,
                 "source": c.source,
             }
             for c in result.changes
