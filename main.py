@@ -357,6 +357,14 @@ def main() -> None:
         print(f"\nLifetime cashflow: funds last to age {lcf_summary.get('life_expectancy', '?')}")
 
     # ------------------------------------------------------------------
+    # 13c. Withdrawal sequencing (v8.3)
+    # ------------------------------------------------------------------
+    from engine.withdrawal import model_withdrawal_sequence
+    withdrawal_result = model_withdrawal_sequence(profile, assumptions, investment_result)
+    ws = withdrawal_result
+    print(f"\nWithdrawal sequencing: lifetime tax saving £{ws.get('lifetime_tax_saving', 0):,.0f}")
+
+    # ------------------------------------------------------------------
     # 14. Advisor insights (T1-2, T1-3)
     # ------------------------------------------------------------------
     print("\nGenerating advisor insights...")
@@ -458,6 +466,7 @@ def main() -> None:
         sensitivity=sensitivity_result,
         assumptions_meta=assumptions_meta,
         lifetime_cashflow=lifetime_cf,
+        withdrawal_sequence=withdrawal_result,
     )
 
     saved_path = save_report(report, output_path)

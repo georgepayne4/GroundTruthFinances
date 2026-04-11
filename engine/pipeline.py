@@ -29,6 +29,7 @@ from engine.scenarios import run_scenarios
 from engine.scoring import calculate_scores
 from engine.sensitivity import run_sensitivity
 from engine.validator import validate_profile
+from engine.withdrawal import model_withdrawal_sequence
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +101,7 @@ def run_pipeline(
     lifetime_cf = project_lifetime_cashflow(
         profile, assumptions, cashflow, investment_result, mortgage_result,
     )
+    withdrawal_result = model_withdrawal_sequence(profile, assumptions, investment_result)
     sensitivity_result = run_sensitivity(
         profile, assumptions, cashflow, debt_result,
         investment_result, mortgage_result,
@@ -134,6 +136,7 @@ def run_pipeline(
         sensitivity=sensitivity_result,
         assumptions_meta=assumptions_meta,
         lifetime_cashflow=lifetime_cf,
+        withdrawal_sequence=withdrawal_result,
     )
 
     return report, profile, flags

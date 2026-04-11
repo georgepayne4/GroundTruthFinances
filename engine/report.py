@@ -51,6 +51,7 @@ def assemble_report(
     sensitivity: SensitivityResult | None = None,
     assumptions_meta: dict | None = None,
     lifetime_cashflow: dict | None = None,
+    withdrawal_sequence: dict | None = None,
 ) -> ReportDict:
     """
     Assemble all analysis results into the final report structure.
@@ -86,6 +87,7 @@ def assemble_report(
         "advisor_insights": insights,
         "review_schedule": insights.get("review_schedule"),
         "lifetime_cashflow": lifetime_cashflow,
+        "withdrawal_sequence": withdrawal_sequence,
     }
 
     return report
