@@ -150,7 +150,19 @@ inheritance_tax:
   nil_rate_band: 325000                # Source: HMRC 2025/26 (frozen since 2009)
   residence_nil_rate: 175000           # Source: HMRC 2025/26
   rate: 0.40                           # Source: HMRC 2025/26
+  charitable_rate: 0.36                # Source: HMRC — 10%+ of net estate to charity reduces rate
+  charitable_threshold_pct: 0.10       # Source: HMRC — minimum 10% of baseline amount
   spousal_exemption: true              # Source: HMRC — transfers between spouses are exempt
+  annual_gift_exemption: 3000          # Source: HMRC 2025/26 — per person per year
+  small_gift_limit: 250                # Source: HMRC 2025/26 — unlimited recipients
+  pet_full_exemption_years: 7          # Source: HMRC — PETs fully exempt after 7 years
+  taper_relief:                        # Source: HMRC — taper relief on failed PETs (years_since_gift threshold)
+    - { min_years: 3, relief_pct: 0.20 }
+    - { min_years: 4, relief_pct: 0.40 }
+    - { min_years: 5, relief_pct: 0.60 }
+    - { min_years: 6, relief_pct: 0.80 }
+  rnrb_taper_threshold: 2000000       # Source: HMRC 2025/26 — RNRB tapers above this
+  rnrb_taper_rate: 0.50               # Source: HMRC — £1 RNRB lost per £2 over threshold
 
 glide_path:
   # Source: Vanguard Target Retirement Fund methodology (age-based de-risking)

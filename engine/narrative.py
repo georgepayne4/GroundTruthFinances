@@ -234,6 +234,9 @@ def _detailed_analysis(report: dict) -> str:
         lines = ["## Estate Planning", ""]
         lines.append(f"**Projected estate value:** {estate.get('projected_estate_value', 0):,.0f}")
         lines.append(f"**IHT liability:** {estate.get('iht_liability', 0):,.0f}")
+        iht_note = estate.get("iht_note")
+        if iht_note:
+            lines.append(f"*{iht_note}*")
         actions = estate.get("estate_planning", {}).get("actions", [])
         if actions:
             lines.append("")
@@ -242,6 +245,15 @@ def _detailed_analysis(report: dict) -> str:
                     lines.append(f"- {a['action']} (Cost: {a.get('estimated_cost', 'N/A')})")
                 else:
                     lines.append(f"- {a}")
+        suggestions = estate.get("optimisation_suggestions", [])
+        actionable = [s for s in suggestions if s.get("estimated_lifetime_saving", 0) > 0]
+        if actionable:
+            lines.append("\n### IHT Optimisation Strategies")
+            for s in actionable:
+                lines.append(f"- {s['description']}")
+        savings = estate.get("estimated_tax_savings", 0)
+        if savings > 0:
+            lines.append(f"\n**Total potential IHT savings:** {savings:,.0f}")
         sections.append("\n".join(lines))
 
     return "\n\n".join(sections)

@@ -47,6 +47,7 @@ def generate_insights(
     mortgage_analysis: MortgageResult,
     scoring: ScoringResult,
     life_events: LifeEventsResult,
+    estate_analysis: dict | None = None,
 ) -> InsightsResult:
     """Generate a structured set of advisor insights."""
     import html
@@ -81,6 +82,7 @@ def generate_insights(
         "income_verification": _income_verification_insight(profile),
         "expense_micro_insights": _expense_micro_insights(profile, cashflow),
         "risk_profiling_insights": _risk_profiling_insights(investment_analysis),
+        "estate_insights": _estate_insights(estate_analysis) if estate_analysis else [],
     }
 
     return insights
@@ -791,6 +793,43 @@ def _investment_insights(investment_analysis: dict, personal: dict) -> list[str]
     isa_note = investment_analysis.get("isa_note", "")
     if isa_note:
         insights.append(isa_note)
+
+    return insights
+
+
+def _estate_insights(estate_analysis: dict) -> list[str]:
+    """v8.5: Generate insights from estate and IHT analysis."""
+    insights: list[str] = []
+
+    iht_liability = estate_analysis.get("iht_liability", 0)
+    estate_value = estate_analysis.get("projected_estate_value", 0)
+
+    if iht_liability > 0:
+        insights.append(
+            f"Your projected estate of {estate_value:,.0f} faces an IHT liability "
+            f"of {iht_liability:,.0f} at current projections."
+        )
+
+    savings = estate_analysis.get("estimated_tax_savings", 0)
+    if savings > 0:
+        insights.append(
+            f"Optimisation strategies could save up to {savings:,.0f} in IHT."
+        )
+
+    # Top suggestion
+    suggestions = estate_analysis.get("optimisation_suggestions", [])
+    if suggestions:
+        top = max(suggestions, key=lambda s: s.get("estimated_lifetime_saving", 0))
+        if top.get("estimated_lifetime_saving", 0) > 0:
+            insights.append(f"Top strategy: {top['description']}")
+
+    # Gift analysis
+    gift = estate_analysis.get("gift_analysis", {})
+    remaining = gift.get("annual_exemption_remaining", 0)
+    if remaining > 0 and iht_liability > 0:
+        insights.append(
+            f"You have {remaining:,} of unused annual gift exemption this year."
+        )
 
     return insights
 

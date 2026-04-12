@@ -176,11 +176,24 @@ class ChildcareConfig(BaseModel):
     free_hours_hourly_rate: float = Field(ge=0.0)
 
 
+class TaperReliefBand(BaseModel):
+    min_years: int = Field(ge=0, le=10)
+    relief_pct: float = Field(ge=0.0, le=1.0)
+
+
 class InheritanceTaxConfig(BaseModel):
     nil_rate_band: int = Field(gt=0)
     residence_nil_rate: int = Field(ge=0)
     rate: float = Field(ge=0.0, le=1.0)
+    charitable_rate: float = Field(default=0.36, ge=0.0, le=1.0)
+    charitable_threshold_pct: float = Field(default=0.10, ge=0.0, le=1.0)
     spousal_exemption: bool
+    annual_gift_exemption: int = Field(default=3000, ge=0)
+    small_gift_limit: int = Field(default=250, ge=0)
+    pet_full_exemption_years: int = Field(default=7, ge=1, le=14)
+    taper_relief: list[TaperReliefBand] = Field(default_factory=list)
+    rnrb_taper_threshold: int = Field(default=2000000, ge=0)
+    rnrb_taper_rate: float = Field(default=0.50, ge=0.0, le=1.0)
 
 
 class GlidePathPoint(BaseModel):

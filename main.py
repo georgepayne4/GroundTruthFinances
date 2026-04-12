@@ -345,6 +345,16 @@ def main() -> None:
     planning = estate_result.get("estate_planning", {})
     if planning.get("actions"):
         print(f"  Planning actions:   {len(planning['actions'])}")
+    suggestions = estate_result.get("optimisation_suggestions", [])
+    if suggestions:
+        print(f"  IHT optimisations:  {len(suggestions)}")
+        savings = estate_result.get("estimated_tax_savings", 0)
+        if savings > 0:
+            print(f"  Potential savings:  {savings:,.0f}")
+    gift = estate_result.get("gift_analysis", {})
+    pets = gift.get("total_pets_outstanding", 0)
+    if pets > 0:
+        print(f"  PETs outstanding:   {pets:,.0f}")
 
     # ------------------------------------------------------------------
     # 13. Sensitivity analysis (T1-4)
@@ -389,6 +399,7 @@ def main() -> None:
         profile, assumptions, cashflow, debt_result,
         goal_result, investment_result, mortgage_result,
         scoring_result, life_event_result,
+        estate_analysis=estate_result,
     )
 
     # Print executive summary

@@ -112,6 +112,7 @@ def run_pipeline(
         profile, assumptions, cashflow, debt_result,
         goal_result, investment_result, mortgage_result,
         scoring_result, life_event_result,
+        estate_analysis=estate_result,
     )
 
     assumptions_meta = {

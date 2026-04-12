@@ -153,6 +153,7 @@ def run_pipeline_streaming(
         profile, assumptions, results["cashflow"], results["debt"],
         results["goals"], results["investments"], results["mortgage"],
         results["scoring"], results["life_events"],
+        results.get("estate"),
     )
 
     # --- Assemble report ---

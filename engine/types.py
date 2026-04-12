@@ -205,6 +205,10 @@ class EstateResult(TypedDict, total=False):
     exceeds_threshold: bool
     iht_note: str | None
     estate_planning: dict[str, Any]
+    iht_timeline: list[dict[str, Any]]
+    gift_analysis: dict[str, Any]
+    optimisation_suggestions: list[dict[str, Any]]
+    estimated_tax_savings: float
 
 
 # ---------------------------------------------------------------------------
