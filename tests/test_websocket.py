@@ -83,8 +83,8 @@ class TestStreamingPipeline:
         assert sync_report["scoring"]["grade"] == stream_report["scoring"]["grade"]
 
     def test_stage_count(self):
-        """Should have exactly 16 stages."""
-        assert len(get_stage_names()) == 16
+        """Should have exactly 17 stages."""
+        assert len(get_stage_names()) == 17
 
 
 class TestStageUpdate:
@@ -194,4 +194,4 @@ class TestWebSocketEndpoint:
             assert first_progress is not None
             assert "index" in first_progress
             assert "total" in first_progress
-            assert first_progress["total"] == 16
+            assert first_progress["total"] == 17

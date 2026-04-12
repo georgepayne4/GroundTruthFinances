@@ -25,6 +25,7 @@ from engine.lifetime_cashflow import project_lifetime_cashflow
 from engine.loader import load_assumptions, normalise_profile
 from engine.mortgage import analyse_mortgage
 from engine.report import assemble_report
+from engine.risk_profiling import assess_risk_profiles
 from engine.scenarios import run_scenarios
 from engine.scoring import calculate_scores
 from engine.sensitivity import run_sensitivity
@@ -85,7 +86,8 @@ def run_pipeline(
     cashflow = analyse_cashflow(profile, assumptions)
     debt_result = analyse_debt(profile, assumptions)
     goal_result = analyse_goals(profile, assumptions, cashflow, debt_result)
-    investment_result = analyse_investments(profile, assumptions, cashflow)
+    risk_profile_result = assess_risk_profiles(profile, assumptions, cashflow, goal_result)
+    investment_result = analyse_investments(profile, assumptions, cashflow, goal_result, risk_profile_result)
     mortgage_result = analyse_mortgage(profile, assumptions, cashflow, debt_result)
     insurance_result = assess_insurance(profile, assumptions, cashflow, mortgage_result, investment_result)
     life_event_result = simulate_life_events(profile, assumptions, cashflow)
@@ -137,6 +139,7 @@ def run_pipeline(
         assumptions_meta=assumptions_meta,
         lifetime_cashflow=lifetime_cf,
         withdrawal_sequence=withdrawal_result,
+        risk_profiling=risk_profile_result,
     )
 
     return report, profile, flags

@@ -25,6 +25,7 @@ from engine.life_events import simulate_life_events
 from engine.loader import load_assumptions, normalise_profile
 from engine.mortgage import analyse_mortgage
 from engine.report import assemble_report
+from engine.risk_profiling import assess_risk_profiles
 from engine.scenarios import run_scenarios
 from engine.scoring import calculate_scores
 from engine.sensitivity import run_sensitivity
@@ -101,8 +102,11 @@ def run_pipeline_streaming(
     # Goals
     yield from _run_stage("goals", analyse_goals, profile, assumptions, results["cashflow"], results["debt"])
 
+    # Risk profiling
+    yield from _run_stage("risk_profiling", assess_risk_profiles, profile, assumptions, results["cashflow"], results["goals"])
+
     # Investments
-    yield from _run_stage("investments", analyse_investments, profile, assumptions, results["cashflow"])
+    yield from _run_stage("investments", analyse_investments, profile, assumptions, results["cashflow"], results["goals"], results["risk_profiling"])
 
     # Mortgage
     yield from _run_stage("mortgage", analyse_mortgage, profile, assumptions, results["cashflow"], results["debt"])
@@ -169,6 +173,7 @@ def run_pipeline_streaming(
         scenarios=results["scenarios"],
         estate=results["estate"],
         sensitivity=results["sensitivity"],
+        risk_profiling=results.get("risk_profiling"),
     )
     yield StageUpdate(
         stage="report",
@@ -186,7 +191,7 @@ def _build_stage_list() -> list[str]:
     """Return the ordered list of pipeline stage names."""
     return [
         "normalise", "assumptions", "validation",
-        "cashflow", "debt", "goals", "investments", "mortgage",
+        "cashflow", "debt", "goals", "risk_profiling", "investments", "mortgage",
         "insurance", "life_events", "scoring", "scenarios",
         "estate", "sensitivity", "insights", "report",
     ]

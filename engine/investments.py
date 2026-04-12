@@ -106,6 +106,7 @@ MODEL_PORTFOLIOS = {
 
 def analyse_investments(
     profile: ProfileDict, assumptions: AssumptionsDict, cashflow: CashflowResult,
+    goal_analysis: dict | None = None, risk_profiling: dict | None = None,
 ) -> InvestmentsResult:
     """
     Produce comprehensive investment analysis.
@@ -526,7 +527,87 @@ def analyse_investments(
         result["pension_analysis"]["monte_carlo"] = mc_pension
         result["monte_carlo_summary"] = mc_growth
 
+    # v8.4: Per-goal risk profiles and goal-specific Monte Carlo
+    if risk_profiling:
+        goal_rp = {
+            "goal_risk_profiles": risk_profiling.get("goal_risk_profiles", []),
+            "mismatches": risk_profiling.get("mismatches", []),
+            "capacity_for_loss": risk_profiling.get("capacity_for_loss", {}),
+            "summary": risk_profiling.get("summary", {}),
+        }
+
+        if mc_cfg:
+
+            goal_mc = _run_goal_monte_carlo(
+                goal_rp["goal_risk_profiles"], mc_cfg, inflation, returns_cfg,
+            )
+            for gmc in goal_mc:
+                for gp in goal_rp["goal_risk_profiles"]:
+                    if gp["goal_name"] == gmc["goal_name"]:
+                        gp["monte_carlo"] = gmc
+                        break
+
+        result["goal_risk_profiles"] = goal_rp
+
     return result
+
+
+# ---------------------------------------------------------------------------
+# Per-goal Monte Carlo (v8.4)
+# ---------------------------------------------------------------------------
+
+
+def _run_goal_monte_carlo(
+    goal_profiles: list[dict], mc_cfg: dict, inflation: float,
+    returns_cfg: dict,
+) -> list[dict]:
+    """Run Monte Carlo simulations per goal using goal-specific risk profiles."""
+    from engine.monte_carlo import probability_of_meeting_target, run_simulation
+
+    results = []
+    mc_seed = mc_cfg.get("random_seed")
+    mc_sims = min(mc_cfg.get("num_simulations", 1000), 500)
+
+    for gp in goal_profiles:
+        deadline = gp.get("deadline_years", 0)
+        if deadline <= 0:
+            continue
+
+        effective = gp.get("effective_profile", "conservative")
+        model = MODEL_PORTFOLIOS.get(effective, MODEL_PORTFOLIOS["conservative"])
+        goal_return = returns_cfg.get(effective, model["expected_return"])
+        goal_vol = model["historical_volatility"]
+
+        need = gp.get("need_for_return", {})
+        target = need.get("target_real", 0)
+        allocated = gp.get("allocated_monthly", 0) if "allocated_monthly" in gp else 0
+
+        sim = run_simulation(
+            present_value=0,
+            monthly_contribution=allocated,
+            annual_return=goal_return,
+            annual_volatility=goal_vol,
+            years=deadline,
+            inflation=inflation,
+            num_simulations=mc_sims,
+            random_seed=mc_seed,
+        )
+
+        prob = 0.0
+        if target > 0:
+            import numpy as np
+            terminal = np.array(sim.get("terminal_values_real", [0]))
+            prob = float(probability_of_meeting_target(terminal, target))
+
+        results.append({
+            "goal_name": gp["goal_name"],
+            "probability_of_target_pct": round(prob * 100, 1),
+            "median_outcome_real": sim.get("median_real", 0),
+            "p10_real": sim.get("p10_real", 0),
+            "p90_real": sim.get("p90_real", 0),
+        })
+
+    return results
 
 
 # ---------------------------------------------------------------------------

@@ -70,6 +70,18 @@ class GoalsResult(TypedDict, total=False):
 
 
 # ---------------------------------------------------------------------------
+# Risk profiling result
+# ---------------------------------------------------------------------------
+
+class RiskProfilingResult(TypedDict, total=False):
+    personal_risk_profile: str
+    capacity_for_loss: dict[str, Any]
+    goal_risk_profiles: list[dict[str, Any]]
+    mismatches: list[dict[str, Any]]
+    summary: dict[str, Any]
+
+
+# ---------------------------------------------------------------------------
 # Investments result
 # ---------------------------------------------------------------------------
 
@@ -93,6 +105,7 @@ class InvestmentsResult(TypedDict, total=False):
     rebalancing: dict[str, Any]
     pension_annual_allowance: dict[str, Any]
     monte_carlo_summary: dict[str, Any]
+    goal_risk_profiles: dict[str, Any]
 
 
 # ---------------------------------------------------------------------------

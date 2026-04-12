@@ -52,6 +52,7 @@ from engine.loader import load_assumptions, load_profile, merge_bank_data
 from engine.mortgage import analyse_mortgage
 from engine.narrative import generate_narrative
 from engine.report import assemble_report, save_report
+from engine.risk_profiling import assess_risk_profiles
 from engine.scenarios import run_scenarios
 from engine.scoring import calculate_scores
 from engine.sensitivity import run_sensitivity
@@ -220,10 +221,26 @@ def main() -> None:
               f"high-interest debt: {prereqs.get('high_interest_debt_count', 0)})")
 
     # ------------------------------------------------------------------
+    # 5b. Risk profiling (v8.4)
+    # ------------------------------------------------------------------
+    print("\nRunning risk profiling...")
+    risk_profile_result = assess_risk_profiles(profile, assumptions, cashflow, goal_result)
+    rp_summary = risk_profile_result.get("summary", {})
+    capacity = risk_profile_result.get("capacity_for_loss", {})
+    print(f"  Goals assessed:     {rp_summary.get('goals_assessed', 0)}")
+    print(f"  Mismatches:         {rp_summary.get('warning_count', 0)} warnings, "
+          f"{rp_summary.get('info_count', 0)} info")
+    print(f"  Capacity for loss:  {capacity.get('affordable_drawdown_pct', 0):.0%} "
+          f"({capacity.get('emergency_months', 0):.1f}mo emergency fund)")
+    for m in risk_profile_result.get("mismatches", []):
+        if m.get("severity") == "warning":
+            print(f"  WARNING: {m['message']}")
+
+    # ------------------------------------------------------------------
     # 6. Investment analysis
     # ------------------------------------------------------------------
     print("\nRunning investment analysis...")
-    investment_result = analyse_investments(profile, assumptions, cashflow)
+    investment_result = analyse_investments(profile, assumptions, cashflow, goal_result, risk_profile_result)
     pension = investment_result.get("pension_analysis", {})
     print(f"  Pension adequate:   {pension.get('adequate', False)}")
     print(f"  Replacement ratio:  {pension.get('income_replacement_ratio_pct', 0):.1f}% (net of tax)")
@@ -467,6 +484,7 @@ def main() -> None:
         assumptions_meta=assumptions_meta,
         lifetime_cashflow=lifetime_cf,
         withdrawal_sequence=withdrawal_result,
+        risk_profiling=risk_profile_result,
     )
 
     saved_path = save_report(report, output_path)

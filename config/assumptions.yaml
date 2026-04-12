@@ -328,6 +328,17 @@ lifetime_cashflow:
   care_provision_start_age: 85           # Source: Actuarial estimate — model care from age 85
   state_pension_deferral_rate: 0.058     # Source: DWP — 5.8% per year of deferral
 
+# v8.4: Dynamic risk profiling thresholds
+risk_profiling:
+  short_term_years: 5                  # Source: FCA guidance — sub-5yr goals should not bear equity risk
+  long_term_years: 15                  # Source: Vanguard/Barclays Equity Gilt Study — 15yr+ favours equities
+  capacity_for_loss:
+    emergency_months_for_full: 6       # Source: Financial planning best practice
+    emergency_months_for_moderate: 3
+    full_drawdown_pct: 0.20            # Source: FCA PROD 2.1 capacity for loss framework
+    moderate_drawdown_pct: 0.10
+    low_drawdown_pct: 0.05
+
 # v8.1: Monte Carlo simulation parameters
 monte_carlo:
   num_simulations: 1000                # Source: Internal — balance of accuracy vs speed

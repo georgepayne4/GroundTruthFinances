@@ -80,6 +80,7 @@ def generate_insights(
         "subscription_insights": _subscription_insights(profile, cashflow),
         "income_verification": _income_verification_insight(profile),
         "expense_micro_insights": _expense_micro_insights(profile, cashflow),
+        "risk_profiling_insights": _risk_profiling_insights(investment_analysis),
     }
 
     return insights
@@ -790,6 +791,58 @@ def _investment_insights(investment_analysis: dict, personal: dict) -> list[str]
     isa_note = investment_analysis.get("isa_note", "")
     if isa_note:
         insights.append(isa_note)
+
+    return insights
+
+
+def _risk_profiling_insights(investment_analysis: dict) -> list[str]:
+    """v8.4: Generate insights from goal-specific risk profiling."""
+    goal_rp = investment_analysis.get("goal_risk_profiles")
+    if not goal_rp:
+        return []
+
+    insights: list[str] = []
+
+    # Capacity for loss narrative
+    capacity = goal_rp.get("capacity_for_loss", {})
+    narrative = capacity.get("narrative")
+    if narrative:
+        insights.append(narrative)
+
+    # Per-goal risk recommendations
+    for gp in goal_rp.get("goal_risk_profiles", []):
+        name = gp.get("goal_name", "")
+        deadline = gp.get("deadline_years", 0)
+        effective = gp.get("effective_profile", "")
+        horizon = gp.get("horizon_category", "")
+
+        if horizon == "short" and effective == "conservative":
+            insights.append(
+                f"Your {name} ({deadline} years) should be in conservative funds "
+                f"for capital preservation."
+            )
+
+        need = gp.get("need_for_return", {})
+        if need.get("required_real_return_pct", 0) > 6:
+            min_profile = need.get("minimum_profile", "aggressive")
+            insights.append(
+                f"You need {need['required_real_return_pct']:.1f}% real return for {name} "
+                f"— requires {min_profile} allocation."
+            )
+
+        # Per-goal MC probability
+        mc = gp.get("monte_carlo")
+        if mc:
+            prob = mc.get("probability_of_target_pct", 0)
+            insights.append(
+                f"There is a {prob:.0f}% chance your {name} goal will reach its target "
+                f"with {effective} allocation."
+            )
+
+    # Mismatch warnings
+    for m in goal_rp.get("mismatches", []):
+        if m.get("severity") == "warning":
+            insights.append(f"Risk mismatch: {m['message']}")
 
     return insights
 

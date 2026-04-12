@@ -52,6 +52,7 @@ def assemble_report(
     assumptions_meta: dict | None = None,
     lifetime_cashflow: dict | None = None,
     withdrawal_sequence: dict | None = None,
+    risk_profiling: dict | None = None,
 ) -> ReportDict:
     """
     Assemble all analysis results into the final report structure.
@@ -88,6 +89,7 @@ def assemble_report(
         "review_schedule": insights.get("review_schedule"),
         "lifetime_cashflow": lifetime_cashflow,
         "withdrawal_sequence": withdrawal_sequence,
+        "risk_profiling": risk_profiling,
     }
 
     return report

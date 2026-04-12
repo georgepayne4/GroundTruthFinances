@@ -307,6 +307,15 @@ def _score_investments(investment_analysis: dict, weight: float) -> dict:
         elif prob < 40:
             score -= 5
 
+    # v8.4: Risk alignment bonus/penalty
+    goal_rp = investment_analysis.get("goal_risk_profiles")
+    if goal_rp:
+        warnings = [m for m in goal_rp.get("mismatches", []) if m.get("severity") == "warning"]
+        if not warnings:
+            score += 5
+        else:
+            score -= 3 * min(len(warnings), 3)
+
     return {
         "score": round(min(100, max(0, score)), 1),
         "weight": weight,

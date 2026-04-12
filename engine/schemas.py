@@ -363,6 +363,20 @@ class LifetimeCashflowConfig(BaseModel):
     state_pension_deferral_rate: float = Field(default=0.058, ge=0.0, le=0.20)
 
 
+class CapacityForLossConfig(BaseModel):
+    emergency_months_for_full: int = Field(default=6, ge=1, le=24)
+    emergency_months_for_moderate: int = Field(default=3, ge=1, le=12)
+    full_drawdown_pct: float = Field(default=0.20, ge=0.0, le=1.0)
+    moderate_drawdown_pct: float = Field(default=0.10, ge=0.0, le=1.0)
+    low_drawdown_pct: float = Field(default=0.05, ge=0.0, le=1.0)
+
+
+class RiskProfilingConfig(BaseModel):
+    short_term_years: int = Field(default=5, ge=1, le=10)
+    long_term_years: int = Field(default=15, ge=5, le=30)
+    capacity_for_loss: CapacityForLossConfig = Field(default_factory=CapacityForLossConfig)
+
+
 class MonteCarloConfig(BaseModel):
     num_simulations: int = Field(default=1000, ge=100, le=100000)
     percentiles: list[int] = Field(default=[10, 25, 50, 75, 90])
@@ -417,6 +431,7 @@ class AssumptionsSchema(BaseModel):
     advisory_cost_estimates: AdvisoryCostEstimates
     child_costs: ChildCostsConfig
     lifetime_cashflow: LifetimeCashflowConfig | None = None
+    risk_profiling: RiskProfilingConfig | None = None
     monte_carlo: MonteCarloConfig | None = None
 
 
