@@ -18,8 +18,8 @@ export default function CategoryScores({ scoring }: CategoryScoresProps) {
   );
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-      <h3 className="mb-4 text-sm font-semibold text-gray-700 uppercase tracking-wide">
+    <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5 shadow-sm">
+      <h3 className="mb-4 text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
         Score Breakdown
       </h3>
       <div className="space-y-3" role="list" aria-label="Category scores">
@@ -29,11 +29,11 @@ export default function CategoryScores({ scoring }: CategoryScoresProps) {
           return (
             <div key={name} role="listitem" aria-label={`${displayName}: ${rounded} out of 100`}>
               <div className="flex justify-between text-sm mb-1">
-                <span className="text-gray-700 capitalize">{displayName}</span>
-                <span className="font-semibold text-gray-900">{rounded}</span>
+                <span className="text-gray-700 dark:text-gray-300 capitalize">{displayName}</span>
+                <span className="font-semibold text-gray-900 dark:text-gray-100">{rounded}</span>
               </div>
               <div
-                className="h-2 rounded-full bg-gray-100 overflow-hidden"
+                className="h-2 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden"
                 role="progressbar"
                 aria-valuenow={rounded}
                 aria-valuemin={0}

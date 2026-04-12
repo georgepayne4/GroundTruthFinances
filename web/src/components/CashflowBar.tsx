@@ -19,8 +19,8 @@ export default function CashflowBar({ cashflow }: CashflowBarProps) {
   ];
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-      <h3 id="cashflow-heading" className="mb-4 text-sm font-semibold text-gray-700 uppercase tracking-wide">
+    <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5 shadow-sm">
+      <h3 id="cashflow-heading" className="mb-4 text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
         Monthly Cashflow
       </h3>
       <div role="img" aria-labelledby="cashflow-heading" aria-describedby="cashflow-table">

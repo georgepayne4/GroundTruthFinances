@@ -31,7 +31,7 @@ export default function ScoreGauge({ score, grade }: ScoreGaugeProps) {
         <circle
           cx="90" cy="90" r={radius}
           fill="none" strokeWidth="12"
-          className="stroke-gray-200"
+          className="stroke-gray-200 dark:stroke-gray-700"
         />
         <circle
           cx="90" cy="90" r={radius}
@@ -43,7 +43,7 @@ export default function ScoreGauge({ score, grade }: ScoreGaugeProps) {
         />
       </svg>
       <div className="absolute mt-12 text-center" aria-hidden="true">
-        <div className="text-4xl font-bold text-gray-900">{roundedScore}</div>
+        <div className="text-4xl font-bold text-gray-900 dark:text-gray-100">{roundedScore}</div>
         <div className={`text-2xl font-semibold ${gradeColor(grade)}`}>{grade}</div>
       </div>
     </div>
