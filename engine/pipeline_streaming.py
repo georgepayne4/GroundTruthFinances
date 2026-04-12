@@ -154,6 +154,7 @@ def run_pipeline_streaming(
         results["goals"], results["investments"], results["mortgage"],
         results["scoring"], results["life_events"],
         results.get("estate"),
+        results.get("scenarios"),
     )
 
     # --- Assemble report ---

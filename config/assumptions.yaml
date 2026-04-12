@@ -280,6 +280,66 @@ scenarios:
   inflation_shock_pcts: [5, 8, 10]
   income_cut_pcts: [10, 20, 30]
 
+compound_scenarios:
+  # Source: Internal model — pre-built multi-variable stress scenarios
+  discount_rate_override: null  # null = use investment_returns[risk_profile]
+  scenarios:
+    - name: "recession"
+      description: "Job loss, market crash, and interest rate spike"
+      probability: 0.10
+      income_multiplier: 0.0
+      income_loss_months: 6
+      expense_multiplier: 1.0
+      investment_return_override: -0.20
+      interest_rate_bump_pct: 2.0
+      inflation_override_pct: null
+      recommended_actions:
+        - "Build emergency fund to 6+ months"
+        - "Do not sell investments during downturn"
+        - "Contact lender about payment holiday if needed"
+      nudge_category: "defensive"
+    - name: "boom"
+      description: "Pay rise, strong returns, and falling rates"
+      probability: 0.15
+      income_multiplier: 1.15
+      income_loss_months: 0
+      expense_multiplier: 1.05
+      investment_return_override: 0.12
+      interest_rate_bump_pct: -0.5
+      inflation_override_pct: null
+      recommended_actions:
+        - "Increase pension contributions"
+        - "Accelerate mortgage overpayments"
+        - "Bank at least 50% of the raise"
+      nudge_category: "offensive"
+    - name: "stagflation"
+      description: "Flat income with high inflation eroding purchasing power"
+      probability: 0.15
+      income_multiplier: 1.0
+      income_loss_months: 0
+      expense_multiplier: 1.10
+      investment_return_override: 0.02
+      interest_rate_bump_pct: 1.5
+      inflation_override_pct: 0.08
+      recommended_actions:
+        - "Lock in fixed-rate mortgage"
+        - "Cut discretionary spending"
+        - "Consider inflation-linked bonds"
+      nudge_category: "preservation"
+    - name: "baseline"
+      description: "Current trajectory continues"
+      probability: 0.60
+      income_multiplier: 1.0
+      income_loss_months: 0
+      expense_multiplier: 1.0
+      investment_return_override: null
+      interest_rate_bump_pct: 0.0
+      inflation_override_pct: null
+      recommended_actions:
+        - "Continue current strategy"
+        - "Review quarterly as planned"
+      nudge_category: "steady"
+
 self_employment:
   # Source: HMRC 2025/26 Class 4 NI and Class 2 NI
   class4_main_rate: 0.09

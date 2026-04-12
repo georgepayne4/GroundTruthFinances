@@ -48,6 +48,7 @@ def generate_insights(
     scoring: ScoringResult,
     life_events: LifeEventsResult,
     estate_analysis: dict | None = None,
+    scenarios: dict | None = None,
 ) -> InsightsResult:
     """Generate a structured set of advisor insights."""
     import html
@@ -83,6 +84,7 @@ def generate_insights(
         "expense_micro_insights": _expense_micro_insights(profile, cashflow),
         "risk_profiling_insights": _risk_profiling_insights(investment_analysis),
         "estate_insights": _estate_insights(estate_analysis) if estate_analysis else [],
+        "scenario_tree_insights": _scenario_tree_insights(scenarios) if scenarios else [],
     }
 
     return insights
@@ -829,6 +831,67 @@ def _estate_insights(estate_analysis: dict) -> list[str]:
     if remaining > 0 and iht_liability > 0:
         insights.append(
             f"You have {remaining:,} of unused annual gift exemption this year."
+        )
+
+    return insights
+
+
+def _scenario_tree_insights(scenarios: dict) -> list[str]:
+    """v8.6: Generate insights from compound scenario tree analysis."""
+    compound = scenarios.get("compound_scenarios")
+    if not compound:
+        return []
+
+    branches = compound.get("branches", [])
+    if not branches:
+        return []
+
+    insights: list[str] = []
+    expected = compound.get("expected_values", {})
+    summary = compound.get("decision_summary", {})
+
+    # Worst-case warning
+    worst_name = summary.get("worst_case")
+    baseline_branch = next((b for b in branches if b["name"] == "baseline"), None)
+    worst_branch = next((b for b in branches if b["name"] == worst_name), None)
+
+    if worst_branch and baseline_branch:
+        score_drop = baseline_branch["results"]["score"] - worst_branch["results"]["score"]
+        if score_drop > 15:
+            insights.append(
+                f"Under a {worst_branch['description'].lower()}, your financial health "
+                f"score could drop by {score_drop:.0f} points to "
+                f"{worst_branch['results']['score']:.0f}/100."
+            )
+
+    # Expected NPV
+    expected_npv = expected.get("expected_npv", 0)
+    if expected_npv < 0:
+        insights.append(
+            "Probability-weighted analysis suggests negative expected value of "
+            "future surplus. Consider building a larger safety buffer."
+        )
+
+    # Goal feasibility warnings
+    for branch in branches:
+        if branch["name"] == "baseline":
+            continue
+        infeasible = [
+            g["name"] for g in branch["results"].get("goal_feasibility", [])
+            if not g["on_track"]
+        ]
+        if infeasible:
+            insights.append(
+                f"Under {branch['name']}, {len(infeasible)} goal(s) become at risk: "
+                f"{', '.join(infeasible)}."
+            )
+
+    # Risk spread
+    risk_spread = summary.get("risk_spread", 0)
+    if risk_spread > 0:
+        insights.append(
+            f"The range between best and worst case NPV is "
+            f"{risk_spread:,.0f} — diversification and emergency funds are key."
         )
 
     return insights

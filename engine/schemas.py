@@ -397,6 +397,25 @@ class MonteCarloConfig(BaseModel):
     inflation_volatility: float = Field(default=0.01, ge=0.0, le=0.10)
 
 
+class CompoundScenarioDefinition(BaseModel):
+    name: str
+    description: str
+    probability: float = Field(ge=0.0, le=1.0)
+    income_multiplier: float = Field(default=1.0, ge=0.0)
+    income_loss_months: int = Field(default=0, ge=0, le=12)
+    expense_multiplier: float = Field(default=1.0, ge=0.0)
+    investment_return_override: float | None = None
+    interest_rate_bump_pct: float = Field(default=0.0)
+    inflation_override_pct: float | None = None
+    recommended_actions: list[str] = []
+    nudge_category: str = "steady"
+
+
+class CompoundScenariosConfig(BaseModel):
+    discount_rate_override: float | None = None
+    scenarios: list[CompoundScenarioDefinition] = []
+
+
 class AssumptionsSchema(BaseModel):
     """Complete schema for assumptions.yaml."""
     schema_version: int = Field(default=1, ge=1)
@@ -446,6 +465,7 @@ class AssumptionsSchema(BaseModel):
     lifetime_cashflow: LifetimeCashflowConfig | None = None
     risk_profiling: RiskProfilingConfig | None = None
     monte_carlo: MonteCarloConfig | None = None
+    compound_scenarios: CompoundScenariosConfig | None = None
 
 
 # ---------------------------------------------------------------------------

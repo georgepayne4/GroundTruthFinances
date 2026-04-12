@@ -181,6 +181,7 @@ class ScenariosResult(TypedDict, total=False):
     market_downturn: dict[str, Any]
     inflation_shock: dict[str, Any]
     income_reduction: dict[str, Any]
+    compound_scenarios: dict[str, Any]
 
 
 # ---------------------------------------------------------------------------

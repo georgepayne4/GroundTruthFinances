@@ -37,6 +37,7 @@ def generate_narrative(report: dict) -> str:
         _detailed_analysis(report),
         _timeline_and_milestones(report),
         _decision_points(report),
+        _compound_scenarios(report),
         _review_schedule(report),
         _appendix(report),
     ]
@@ -352,6 +353,50 @@ def _decision_points(report: dict) -> str:
     lines = ["## Decision Points", ""]
     for p in points:
         lines.append(f"- {p}")
+
+    return "\n".join(lines)
+
+
+def _compound_scenarios(report: dict) -> str:
+    """v8.6: Compound scenario tree summary."""
+    scenarios = report.get("stress_scenarios", {})
+    compound = scenarios.get("compound_scenarios") if scenarios else None
+    if not compound:
+        return ""
+
+    branches = compound.get("branches", [])
+    if not branches:
+        return ""
+
+    lines = ["## Scenario Tree Analysis", ""]
+    lines.append("| Scenario | Probability | Score | Monthly Surplus | NPV |")
+    lines.append("|----------|------------|-------|-----------------|-----|")
+
+    for b in branches:
+        r = b["results"]
+        prob = f"{b['probability']:.0%}"
+        score = f"{r['score']:.0f}/100"
+        surplus = f"{r['surplus_monthly']:,.0f}"
+        npv = f"{r['npv_surplus']:,.0f}"
+        lines.append(f"| {b['name'].title()} | {prob} | {score} | {surplus} | {npv} |")
+
+    expected = compound.get("expected_values", {})
+    lines.append("")
+    lines.append(
+        f"**Expected outcome (probability-weighted):** "
+        f"Score {expected.get('expected_score', 0):.0f}/100, "
+        f"NPV {expected.get('expected_npv', 0):,.0f}"
+    )
+
+    summary = compound.get("decision_summary", {})
+    worst = summary.get("worst_case", "")
+    if worst:
+        worst_branch = next((b for b in branches if b["name"] == worst), None)
+        if worst_branch and worst_branch["recommended_actions"]:
+            lines.append("")
+            lines.append(f"**If {worst} occurs:**")
+            for action in worst_branch["recommended_actions"]:
+                lines.append(f"- {action}")
 
     return "\n".join(lines)
 

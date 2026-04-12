@@ -113,6 +113,7 @@ def run_pipeline(
         goal_result, investment_result, mortgage_result,
         scoring_result, life_event_result,
         estate_analysis=estate_result,
+        scenarios=scenario_result,
     )
 
     assumptions_meta = {

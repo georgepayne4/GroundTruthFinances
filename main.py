@@ -335,6 +335,17 @@ def main() -> None:
         worst = rate_shock.get("scenarios", {}).get("plus_3_pct", {})
         print(f"  Rate +3% payment:   {worst.get('monthly_payment', 0):,.0f}/mo ({('affordable' if worst.get('affordable') else 'unaffordable')})")
 
+    compound = scenario_result.get("compound_scenarios", {})
+    compound_branches = compound.get("branches", [])
+    if compound_branches:
+        print("  Compound scenarios:")
+        for b in compound_branches:
+            r = b["results"]
+            name = f"{b['name'].title()} ({b['probability']:.0%}):"
+            print(f"    {name:<25} Score {r['score']:.0f} | NPV {r['npv_surplus']:,.0f}")
+        exp = compound.get("expected_values", {})
+        print(f"    {'Expected:':<25} Score {exp.get('expected_score', 0):.0f} | NPV {exp.get('expected_npv', 0):,.0f}")
+
     # ------------------------------------------------------------------
     # 12. Estate analysis
     # ------------------------------------------------------------------
