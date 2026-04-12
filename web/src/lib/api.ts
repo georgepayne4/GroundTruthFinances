@@ -49,29 +49,81 @@ export interface Scoring {
 }
 
 export interface Cashflow {
-  income: { total_gross_annual: number; total_gross_monthly: number };
+  income: { primary_gross_annual: number; partner_gross_annual: number; other_income_annual: number; total_gross_annual: number; total_gross_monthly: number };
+  deductions: { income_tax_annual: number; national_insurance_annual: number; other_income_tax_annual: number; pension_personal_annual: number; pension_employer_annual: number; total_deductions_annual: number };
   net_income: { annual: number; monthly: number };
   expenses: { total_monthly: number; total_annual: number; category_breakdown_monthly: Record<string, number> };
   surplus: { monthly: number; annual: number };
   savings_rate: { basic_pct: number; effective_pct_incl_pension: number };
-  debt_servicing: { total_monthly: number };
+  debt_servicing: { total_monthly: number; total_annual: number };
+  spending_benchmarks?: { comparisons: { category: string; actual_monthly: number; actual_pct_of_net: number; benchmark_pct_of_net: number; benchmark_monthly: number; delta_monthly: number; above_benchmark: boolean }[] };
+}
+
+export interface DebtItem {
+  name: string;
+  type: string;
+  balance: number;
+  interest_rate: number;
+  interest_rate_pct: number;
+  minimum_payment_monthly: number;
+  months_to_payoff?: number;
+  years_to_payoff?: number;
+  total_interest_if_minimum?: number;
+  risk_tier: string;
+  avalanche_priority?: number;
+  snowball_priority?: number;
+  income_contingent?: boolean;
+  write_off_intelligence?: { overpay_recommendation: string; reasoning: string };
 }
 
 export interface DebtAnalysis {
-  debts: { name: string; balance: number; interest_rate: number; type: string; months_to_payoff?: number }[];
-  summary: { total_balance: number; total_minimum_monthly: number; debt_to_income_gross_pct: number; high_interest_debt_count: number };
+  debts: DebtItem[];
+  summary: { total_balance: number; total_minimum_monthly: number; debt_to_income_gross_pct: number; high_interest_debt_count: number; weighted_average_rate_pct: number; total_interest_if_minimum_only: number; longest_payoff_months: number };
   recommended_strategy: string;
 }
 
+export interface GoalItem {
+  name: string;
+  category: string;
+  priority: string;
+  priority_rank: number;
+  target_nominal: number;
+  target_inflation_adjusted: number;
+  current_progress: number;
+  progress_pct: number;
+  remaining_gap: number;
+  deadline_years: number;
+  deadline_months: number;
+  required_monthly: number;
+  allocated_monthly: number;
+  feasibility_with_allocation: string;
+  blocked_by?: string[];
+  what_would_it_take?: { shortfall_monthly: number; option_increase_income_monthly: number; option_reduce_expenses_monthly: number; option_combined_income_and_expense: number };
+}
+
 export interface GoalsAnalysis {
-  goals: { name: string; target_amount: number; deadline_years: number; priority: number; status: string; feasibility: string }[];
-  summary: { total_goals: number; on_track: number; at_risk: number; unreachable: number };
+  goals: GoalItem[];
+  summary: { total_goals: number; on_track: number; at_risk: number; unreachable: number; blocked?: number; total_required_monthly: number; available_surplus_monthly: number; surplus_covers_goals: boolean; shortfall_monthly?: number };
+}
+
+export interface GrowthProjection {
+  years: number;
+  nominal_value: number;
+  real_value_today_terms: number;
+  total_contributions: number;
+  investment_growth: number;
 }
 
 export interface InvestmentsAnalysis {
-  current_portfolio: { isa_balance: number; lisa_balance: number; pension_balance: number; total_invested: number };
-  pension_analysis: { projected_at_retirement_real?: number; income_replacement_ratio_pct?: number; monthly_contribution_total?: number };
+  current_portfolio: { isa_balance: number; lisa_balance: number; pension_balance: number; other_investments: number; total_invested: number };
+  risk_profile: string;
+  expected_annual_return_pct: number;
+  net_return_after_fees_pct: number;
   suggested_allocation?: Record<string, number>;
+  risk_metrics?: { expected_return_pct: number; historical_volatility_pct: number; max_drawdown_pct: number; worst_year_pct: number; negative_year_probability_pct: number; note: string };
+  fee_analysis?: { current_fees: Record<string, number>; fee_drag_over_term: number; fee_comparison: Record<string, number>; projection_years: number };
+  growth_projections?: GrowthProjection[];
+  pension_analysis: { current_balance: number; monthly_contribution_total: number; annual_contribution_total: number; projected_at_retirement_nominal?: number; projected_at_retirement_real?: number; tax_free_lump_sum?: number; annual_income_net?: number; income_replacement_ratio_pct?: number; adequate?: boolean; fund_longevity_years?: number; years_in_retirement?: number };
 }
 
 export interface AdvisorInsights {
