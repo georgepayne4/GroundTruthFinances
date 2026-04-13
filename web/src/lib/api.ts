@@ -32,10 +32,10 @@ export interface Report {
   debt: DebtAnalysis;
   goals: GoalsAnalysis;
   investments: InvestmentsAnalysis;
-  mortgage: Record<string, unknown>;
-  life_events: Record<string, unknown>;
+  mortgage: MortgageAnalysis;
+  life_events: LifeEventsAnalysis;
   insurance: Record<string, unknown>;
-  stress_scenarios: Record<string, unknown>;
+  stress_scenarios: StressScenarios;
   estate: Record<string, unknown>;
   sensitivity_analysis: Record<string, unknown>;
   advisor_insights: AdvisorInsights;
@@ -124,6 +124,92 @@ export interface InvestmentsAnalysis {
   fee_analysis?: { current_fees: Record<string, number>; fee_drag_over_term: number; fee_comparison: Record<string, number>; projection_years: number };
   growth_projections?: GrowthProjection[];
   pension_analysis: { current_balance: number; monthly_contribution_total: number; annual_contribution_total: number; projected_at_retirement_nominal?: number; projected_at_retirement_real?: number; tax_free_lump_sum?: number; annual_income_net?: number; income_replacement_ratio_pct?: number; adequate?: boolean; fund_longevity_years?: number; years_in_retirement?: number };
+}
+
+// Mortgage types
+export interface LtvBand {
+  ltv_pct: number;
+  deposit_required: number;
+  extra_deposit_needed: number;
+  mortgage_amount: number;
+  rate_pct: number;
+  monthly_payment: number;
+  total_interest: number;
+  achievable: boolean;
+}
+
+export interface OverpaymentScenario {
+  extra_monthly: number;
+  new_payoff_years: number;
+  months_saved: number;
+  years_saved: number;
+  total_interest_saved: number;
+  exceeds_10pct_limit: boolean;
+}
+
+export interface MortgageAnalysis {
+  applicable: boolean;
+  target_property_value?: number;
+  first_time_buyer?: boolean;
+  borrowing?: { income_used: number; income_multiple: number; max_borrowing_gross: number; max_borrowing_adjusted: number; required_mortgage: number; can_borrow_enough: boolean };
+  deposit?: { required_at_preferred_pct: number; available_for_deposit: number; gap: number; adequate: boolean; months_to_save_gap: number };
+  repayment?: { mortgage_amount: number; term_years: number; estimated_rate_pct: number; monthly_repayment: number; total_repayment: number; total_interest: number; replaces_rent: number; net_monthly_change: number; post_mortgage_surplus: number };
+  affordability?: { repayment_to_income_pct: number; stress_test_to_income_pct: number; affordable: boolean; stress_test_passes: boolean };
+  ltv_analysis?: { current_ltv_pct: number; bands: LtvBand[] };
+  overpayment_analysis?: OverpaymentScenario[];
+  readiness?: { ready: boolean; blockers: string[]; strengths: string[] };
+}
+
+// Life events types
+export interface TimelineYear {
+  year: number;
+  age: number;
+  events: string[] | null;
+  gross_income_annual: number;
+  net_income_annual: number;
+  expenses_annual: number;
+  debt_payments_annual: number;
+  annual_surplus: number;
+  savings_rate_pct: number;
+  liquid_savings: number;
+  investments: number;
+  total_debt: number;
+  net_worth: number;
+  property_value?: number;
+  mortgage_balance?: number;
+  equity?: number;
+}
+
+export interface Milestone {
+  year: number;
+  age: number;
+  type: string;
+  message: string;
+}
+
+export interface LifeEventsAnalysis {
+  projection_years: number;
+  timeline: TimelineYear[];
+  milestones?: Milestone[];
+  summary?: Record<string, unknown>;
+}
+
+// Stress scenario types
+export interface CompoundBranch {
+  name: string;
+  description: string;
+  probability: number;
+  nudge_category: string;
+  results: { score: number; grade: string; surplus_monthly: number; npv_surplus: number; goal_feasibility: { name: string; status: string; on_track: boolean }[] };
+  recommended_actions?: string[];
+  score_delta?: number;
+}
+
+export interface StressScenarios {
+  job_loss?: { monthly_burn_rate: number; liquid_savings: number; months_runway: number; assessment: string; recommendation: string; scenarios: Record<string, { total_cost: number; shortfall: number; survives: boolean }> };
+  interest_rate_shock?: { applicable: boolean; base_rate_pct: number; base_payment: number; scenarios: Record<string, { rate_pct: number; monthly_payment: number; affordability_pct: number; affordable: boolean; post_mortgage_surplus: number; in_deficit: boolean }> };
+  market_downturn?: { current_portfolio: number; recommendation: string; scenarios: Record<string, { portfolio_value: number; loss: number }> };
+  compound_scenarios?: { branches: CompoundBranch[]; expected_values: Record<string, number>; decision_summary: Record<string, unknown>; baseline_npv: number };
 }
 
 export interface AdvisorInsights {
