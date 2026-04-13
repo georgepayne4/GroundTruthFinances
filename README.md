@@ -4,7 +4,7 @@ A comprehensive UK financial planning platform combining an advisor-grade calcul
 
 ## What It Does
 
-GroundTruth runs a 16-stage analysis pipeline across your complete financial picture:
+GroundTruth runs a multi-stage analysis pipeline across your complete financial picture:
 
 | Stage | What It Calculates |
 |-------|-------------------|
@@ -13,43 +13,59 @@ GroundTruth runs a 16-stage analysis pipeline across your complete financial pic
 | Debt | Payoff timelines, avalanche/snowball strategies, student loan write-off intelligence, credit card utilisation |
 | Goals | Priority-weighted surplus allocation, inflation-adjusted targets, LISA bonus projections |
 | Investments | Portfolio projections, pension adequacy, employer match optimisation, fee drag, glide path, drawdown vs annuity |
+| Monte Carlo | GBM investment simulation with percentile bands and pension probability analysis |
+| Lifetime Cashflow | Year-by-year projection across accumulation, pre-retirement, early retirement, and late retirement phases |
+| Withdrawal | Tax-optimal drawdown sequencing (ISA/GIA/pension), PCLS timing, state pension deferral analysis |
+| Risk Profiling | Per-goal risk capacity/need assessment with mismatch detection |
 | Mortgage | Borrowing capacity, LTV bands, product comparison, overpayment modelling, shared ownership, stress tests |
 | Insurance | Life/income protection/critical illness gaps, pension-cross-referenced coverage |
 | Life Events | Year-by-year simulation with milestones, child costs, equity tracking |
 | Scoring | Composite 0-100 score across 7 weighted categories with grade (A+ to F) |
-| Scenarios | Job loss runway, interest rate shock, market drawdown, inflation spike |
+| Scenarios | Job loss runway, interest rate shock, market drawdown, compound scenario trees with probability-weighted outcomes |
 | Sensitivity | Parameter sweeps across income, rates, contributions, property prices |
-| Estate | IHT liability, nil-rate bands, spousal exemption, gifting strategy |
+| Estate | IHT liability, nil-rate bands, RNRB taper, spousal exemption, gift strategies, taper relief, charitable rate |
 | Insights | Surplus deployment plan, tax optimisation, risk warnings, positive reinforcements |
 | Narrative | Full Markdown advisor letter generated from structured data |
 
 ## Platform Components
 
 ### Engine (Python)
-The core calculation engine — 18 pure-function modules, no shared state. Processes a YAML/JSON profile and returns a comprehensive analysis report.
+The core calculation engine — 22 pure-function modules, no shared state. Processes a YAML/JSON profile and returns a comprehensive analysis report. 697 tests across 29 test files.
 
 ### REST API (FastAPI)
 Full-featured API with:
 - `POST /api/v1/analyse` — Run complete analysis
 - `POST /api/v1/validate` — Validate profile structure
-- `GET /api/v1/assumptions` — Current financial assumptions
-- `GET /api/v1/history` — Historical run tracking
+- `GET /api/v1/assumptions` — Current financial assumptions with staleness status
+- `GET /api/v1/assumptions/status` — Assumption freshness check
+- `POST /api/v1/assumptions/diff` — Dry-run assumption comparison
+- `GET /api/v1/history` — Historical run tracking with cursor-based pagination
+- `GET /api/v1/health` — Health check endpoint
 - `POST /api/v1/whatif` — Interactive what-if scenarios
 - `POST /api/v1/compare` — Side-by-side profile comparison
 - `POST /api/v1/compare/branch` — Scenario branching
+- `POST /api/v1/sensitivity` — Parameter sensitivity analysis
+- `POST /api/v1/scenarios` — Stress scenario modelling
 - `POST /api/v1/cashflow/drift` — Planned vs actual spending
 - `POST /api/v1/export/{id}/{format}` — CSV, XLSX, PDF exports
 - WebSocket `/ws/analyse` — Real-time streaming analysis
 
-Per-user API key authentication, audit logging, rate limiting.
+Per-user API key authentication, audit logging, rate limiting, HTTPS enforcement, request size limits.
 
 ### Web Dashboard (React)
-React 18 + TypeScript + TailwindCSS dashboard with:
-- Financial health score gauge with grade
-- Monthly cashflow breakdown chart
-- Category score breakdown with progress bars
-- Priority action recommendations
-- Profile JSON editor with live analysis
+React 19 + TypeScript + TailwindCSS 4 multi-page dashboard with:
+- **Home** — Financial health score gauge, monthly surplus, net worth trend, priority actions
+- **Cashflow** — Income/expense waterfall, category breakdown, spending benchmarks
+- **Debt** — Payoff timeline, avalanche order, student loan intelligence, credit utilisation
+- **Goals** — Progress bars with feasibility status, what-would-it-take analysis
+- **Investments** — Portfolio allocation, pension projection, fee comparison
+- **Mortgage** — Readiness checklist, LTV band explorer, overpayment scenarios
+- **Life Events** — Timeline with milestones, year-by-year projection with net worth trajectory
+- **Scenarios** — Compound scenario tree visualisation, stress test results
+- **Settings** — Profile JSON editor with live analysis (power user mode)
+- **Guided Onboarding Wizard** — 9-step progressive profile creation with smart defaults, template goals, completeness scoring, and localStorage save/resume
+- Sidebar navigation with active section highlighting
+- Dark mode support
 - WCAG 2.1 AA accessible, colour-blind safe palette
 
 ### Open Banking (TrueLayer)
@@ -101,20 +117,27 @@ npm run dev
 # Dashboard at http://localhost:5173 (proxies API to localhost:8000)
 ```
 
+### Docker
+
+```bash
+docker-compose up --build
+# API at localhost:8000, dashboard at localhost:5173
+```
+
 ### Development
 
 ```bash
-# Run tests (504 tests)
+# Run tests (697 tests)
 python -m pytest --tb=short -q
 
 # Lint
 ruff check .
 
+# TypeScript check
+cd web && npx tsc --noEmit
+
 # Run with coverage
 python -m pytest --cov=engine
-
-# Full check (lint + test)
-make check
 ```
 
 ## Project Structure
@@ -123,23 +146,27 @@ make check
 main.py                          CLI entry point
 config/
   sample_input.yaml              Example financial profile
-  assumptions.yaml               Tax bands, rates, weights (HMRC 2025/26, 315 lines)
+  assumptions.yaml               Tax bands, rates, weights (HMRC 2025/26, 419 lines)
   category_rules.yaml            Bank transaction categorisation rules
 engine/
-  pipeline.py                    Shared 16-stage pipeline orchestration
+  pipeline.py                    Shared pipeline orchestration
   pipeline_streaming.py          Generator-based streaming pipeline
   cashflow.py                    Income tax, NI, surplus, benchmarks
   tax.py                         UK tax calculations (income, NI, CGT, dividends, pension)
   debt.py                        Repayment strategies, write-off intelligence
   goals.py                       Goal feasibility and surplus allocation
   investments.py                 Portfolio projections, pension adequacy, fees, glide path
+  monte_carlo.py                 GBM investment simulation with confidence bands
+  lifetime_cashflow.py           Multi-phase year-by-year cashflow projection
+  withdrawal.py                  Tax-optimal drawdown sequencing
+  risk_profiling.py              Goal-specific risk capacity/need assessment
   mortgage.py                    Borrowing capacity, product comparison, overpayment
   insurance.py                   Insurance gap assessment
   life_events.py                 Multi-year trajectory simulation
   scoring.py                     Financial health scoring (7 categories)
-  scenarios.py                   Stress scenario modelling
+  scenarios.py                   Stress scenarios and compound scenario trees
   sensitivity.py                 Parameter sensitivity analysis
-  estate.py                      IHT and estate planning
+  estate.py                      IHT, gift strategies, taper relief, RNRB
   insights.py                    Advisor-style recommendations
   narrative.py                   Markdown report generation
   report.py                      Report assembly and JSON output
@@ -162,36 +189,48 @@ api/
   whatif.py                      What-If explorer
   comparison.py                  Profile comparison and branching
   cashflow_actual.py             Planned vs actual drift detection
-  database/
-    models.py                    SQLAlchemy ORM models
-    session.py                   Database session management
-    crud.py                      CRUD operations
-  banking/
-    router.py                    Open Banking API endpoints (11 routes)
-    truelayer.py                 TrueLayer API client
-    encryption.py                Fernet token encryption
-    sync.py                      Account and transaction sync
-    crud.py                      Banking CRUD operations
-    income.py                    Income verification
-    expenses.py                  Expense summarisation
-  notifications/
-    router.py                    Notification API endpoints
-    triggers.py                  Score change, goal deadline, tax year triggers
-    channels.py                  In-app, email, webhook delivery
-    crud.py                      Notification CRUD
+  database/                      SQLAlchemy ORM, sessions, CRUD
+  banking/                       Open Banking (TrueLayer) integration
+  notifications/                 In-app, email, webhook notifications
 web/
   src/
-    App.tsx                      React application root
-    lib/api.ts                   Typed API client
+    App.tsx                      React application root with routing
+    lib/
+      api.ts                     Typed API client with full report interfaces
+      report-context.tsx         React Context for report state management
     components/
-      Dashboard.tsx              Main dashboard with profile editor
+      Layout.tsx                 App shell with header, sidebar, responsive layout
+      Sidebar.tsx                Navigation sidebar with active section highlighting
       ScoreGauge.tsx             SVG score gauge with grade
       MetricCard.tsx             Key metric display card
       CashflowBar.tsx            Recharts cashflow bar chart
       CategoryScores.tsx         Score breakdown with progress bars
       PriorityActions.tsx        Priority action list
-tests/
-  conftest.py                    Shared fixtures (22 test files, 504 tests)
+      PageHeader.tsx             Reusable page header
+      EmptyState.tsx             Empty state with call to action
+      ThemeToggle.tsx            Dark mode toggle
+    pages/
+      HomePage.tsx               Dashboard overview
+      CashflowPage.tsx           Cashflow detail page
+      DebtPage.tsx               Debt analysis page
+      GoalsPage.tsx              Goals progress page
+      InvestmentsPage.tsx        Investment and pension page
+      MortgagePage.tsx           Mortgage readiness and LTV page
+      LifeEventsPage.tsx         Life events timeline page
+      ScenariosPage.tsx          Stress tests and scenario trees page
+      SettingsPage.tsx           JSON profile editor (power user)
+    wizard/
+      WizardPage.tsx             Guided onboarding wizard (9 steps)
+      WizardContext.tsx          Wizard state management and save/resume
+      steps/                     Personal, Income, Expenses, Savings, Debts,
+                                 Goals, Mortgage, Life Events, Review
+      components/                FieldGroup, CurrencyInput, PercentInput,
+                                 SelectField, ToggleField, DynamicList,
+                                 StepShell, ProgressBar, CompletenessScore,
+                                 TemplateGoalPicker
+      lib/                       Types, smart defaults, completeness scoring,
+                                 localStorage persistence, profile conversion
+tests/                           697 tests across 29 test files
 ```
 
 ## Profile Format
@@ -216,14 +255,17 @@ See `config/sample_input.yaml` for a complete example.
 
 ## Assumptions
 
-All financial parameters are centralised in `config/assumptions.yaml` (315 lines) with source comments:
+All financial parameters are centralised in `config/assumptions.yaml` (419 lines) with source comments:
 - Tax bands, NI thresholds, personal allowance (HMRC 2025/26)
 - Scottish income tax bands (6 rates)
-- Investment returns by risk profile, inflation rates
+- Investment returns by risk profile, inflation rates, Monte Carlo parameters
 - Mortgage products, LTV tiers, stamp duty bands
 - State pension, pension annual allowance with taper
 - Scoring weights, insurance cost estimates, child costs by age
 - Student loan plans (2, 3, postgrad), ISA/LISA limits
+- Lifetime cashflow phases, withdrawal sequencing rules
+- IHT gift strategies, taper relief thresholds
+- Compound scenario definitions (recession, boom, stagflation)
 
 Auto-updated from HMRC, BoE, and ONS APIs via `engine/assumption_updater.py`.
 
@@ -237,11 +279,11 @@ Auto-updated from HMRC, BoE, and ONS APIs via `engine/assumption_updater.py`.
 ## Roadmap
 
 See `roadmap.md` for the forward plan. Current status:
-- **v5 (Engine Foundation):** Complete
-- **v6 (Web + Open Banking):** Complete
-- **v7 (Production Hardening):** Next — tech debt, integration tests, security, Docker
-- **v8 (Intelligence Engine):** Monte Carlo, lifetime cashflow, tax-optimal withdrawal
-- **v9 (Consumer Launch):** Full UI, auth, onboarding, pricing, deployment
+- **v5 (Engine Foundation):** Complete — 18 modules, REST API, per-user auth, CSV/PDF exports
+- **v6 (Web + Open Banking):** Complete — React dashboard, TrueLayer, WebSocket, what-if, notifications, WCAG
+- **v7 (Production Hardening):** Complete — Security audit, integration tests, Docker/PostgreSQL, API polish
+- **v8 (Intelligence Engine):** Complete — Monte Carlo, lifetime cashflow, withdrawal sequencing, risk profiling, IHT planning, scenario trees
+- **v9 (Consumer Launch):** In progress — Multi-page dashboard (done), onboarding wizard (done), auth, UI overhaul, pricing, deployment
 
 ## License
 
