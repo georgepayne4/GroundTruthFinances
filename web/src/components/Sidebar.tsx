@@ -9,6 +9,7 @@ import {
   Calendar,
   GitBranch,
   Settings,
+  Wand2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -19,6 +20,7 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
+  { to: "/wizard", label: "Setup", icon: Wand2 },
   { to: "/", label: "Overview", icon: LayoutDashboard },
   { to: "/cashflow", label: "Cashflow", icon: ArrowLeftRight },
   { to: "/debt", label: "Debt", icon: CreditCard },

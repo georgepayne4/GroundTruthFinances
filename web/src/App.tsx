@@ -10,6 +10,7 @@ import MortgagePage from "./pages/MortgagePage";
 import LifeEventsPage from "./pages/LifeEventsPage";
 import ScenariosPage from "./pages/ScenariosPage";
 import SettingsPage from "./pages/SettingsPage";
+import WizardPage from "./wizard/WizardPage";
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
         <Routes>
           <Route element={<Layout />}>
             <Route index element={<HomePage />} />
+            <Route path="wizard" element={<WizardPage />} />
             <Route path="cashflow" element={<CashflowPage />} />
             <Route path="debt" element={<DebtPage />} />
             <Route path="goals" element={<GoalsPage />} />
