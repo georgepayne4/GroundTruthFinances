@@ -10,6 +10,9 @@ venv/
 # Generated outputs
 outputs/
 
+# MkDocs build
+site/
+
 # IDE
 .vscode/
 .idea/

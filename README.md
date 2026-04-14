@@ -289,12 +289,39 @@ All financial parameters are centralised in `config/assumptions.yaml` (419 lines
 
 Auto-updated from HMRC, BoE, and ONS APIs via `engine/assumption_updater.py`.
 
+## Documentation
+
+Full documentation lives in `docs/` and is published as a static site via MkDocs.
+
+```bash
+# Install docs dependencies
+pip install -r requirements-docs.txt
+
+# Preview locally (http://localhost:8000)
+mkdocs serve
+
+# Build static site into site/
+mkdocs build
+```
+
+Sections:
+
+- **Home & Getting Started** — what GroundTruth is, who it's for, first analysis walkthrough
+- **User Guide** — non-technical tour of every dashboard page and score
+- **Profile Guide** — every field of the profile YAML explained
+- **API Reference** — endpoint-by-endpoint with curl/Python examples
+- **Assumptions Guide** — every financial parameter, its source, and when it updates
+- **Technical Architecture** — pipeline, modules, data flow, deployment topology
+- **Contributing** — dev setup, testing conventions, code standards
+- **Legal & Compliance** — regulatory classification, GDPR rights, disclaimers
+
 ## Requirements
 
 - Python 3.10+
 - Node.js 18+ (for web dashboard)
 - See `requirements.txt` for Python dependencies
 - See `web/package.json` for frontend dependencies
+- See `requirements-docs.txt` for MkDocs dependencies
 
 ## Roadmap
 
@@ -303,7 +330,7 @@ See `roadmap.md` for the forward plan. Current status:
 - **v6 (Web + Open Banking):** Complete — React dashboard, TrueLayer, WebSocket, what-if, notifications, WCAG
 - **v7 (Production Hardening):** Complete — Security audit, integration tests, Docker/PostgreSQL, API polish
 - **v8 (Intelligence Engine):** Complete — Monte Carlo, lifetime cashflow, withdrawal sequencing, risk profiling, IHT planning, scenario trees
-- **v9 (Consumer Launch):** In progress — Multi-page dashboard (done), onboarding wizard (done), Clerk auth (done), legal framework (done), UI overhaul, pricing, deployment
+- **v9 (Consumer Launch):** In progress — Multi-page dashboard (done), onboarding wizard (done), Clerk auth (done), legal framework (done), documentation (done), UI overhaul, pricing, deployment
 
 ## License
 

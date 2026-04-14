@@ -1,0 +1,67 @@
+site_name: GroundTruth Documentation
+site_description: UK financial planning platform — engine, API, and dashboard docs
+site_url: https://groundtruth.finance/docs
+repo_url: https://github.com/georgepayne4/GroundTruthFinances
+repo_name: georgepayne4/GroundTruthFinances
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: black
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+    - search.highlight
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+  - pymdownx.snippets
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - User Guide:
+      - Overview: user-guide/index.md
+      - Home: user-guide/home.md
+      - Cashflow: user-guide/cashflow.md
+      - Debt: user-guide/debt.md
+      - Goals: user-guide/goals.md
+      - Investments: user-guide/investments.md
+      - Mortgage: user-guide/mortgage.md
+      - Life Events: user-guide/life-events.md
+      - Scenarios: user-guide/scenarios.md
+      - Scores & Grades: user-guide/scores.md
+  - Profile Guide: profile-guide.md
+  - API Reference: api-reference.md
+  - Assumptions Guide: assumptions-guide.md
+  - Technical Architecture: architecture.md
+  - Contributing: contributing.md
+  - Legal & Compliance: legal.md
