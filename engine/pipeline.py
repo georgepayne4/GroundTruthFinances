@@ -122,6 +122,7 @@ def run_pipeline(
         "effective_from": assumptions.get("effective_from", ""),
         "effective_to": assumptions.get("effective_to", ""),
     }
+    legal_meta = assumptions.get("legal", {})
 
     report = assemble_report(
         profile=profile,
@@ -139,6 +140,7 @@ def run_pipeline(
         estate=estate_result,
         sensitivity=sensitivity_result,
         assumptions_meta=assumptions_meta,
+        legal_meta=legal_meta,
         lifetime_cashflow=lifetime_cf,
         withdrawal_sequence=withdrawal_result,
         risk_profiling=risk_profile_result,

@@ -275,3 +275,7 @@ export function getHistory(limit = 10): Promise<{ runs: HistoryRun[]; count: num
 export function deleteAccount(): Promise<{ status: string; detail: string }> {
   return request("/account", { method: "DELETE" });
 }
+
+export function exportAccount(): Promise<Record<string, unknown>> {
+  return request("/account/export");
+}

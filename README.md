@@ -2,6 +2,10 @@
 
 A comprehensive UK financial planning platform combining an advisor-grade calculation engine, REST API, and React dashboard. Analyses income, tax, debt, pensions, mortgages, insurance, and estate planning — then scores your financial health and tells you exactly what to do next.
 
+## What GroundTruth Is / Is Not
+
+GroundTruth is an **information service** that provides computational analysis of financial data you supply. It is **not** a regulated financial adviser and is not authorised by the FCA to give personal recommendations. Outputs are educational — they surface trade-offs, project scenarios, and flag risks, but they do not constitute advice. For regulated advice, consult a qualified IFA. See the Terms of Service and Privacy Policy pages in the app for full details.
+
 ## What It Does
 
 GroundTruth runs a multi-stage analysis pipeline across your complete financial picture:
@@ -51,6 +55,7 @@ Full-featured API with:
 - WebSocket `/ws/analyse` — Real-time streaming analysis
 
 - `DELETE /api/v1/account` — GDPR account erasure (wipes PII, cascades owned data)
+- `GET /api/v1/account/export` — GDPR right to access (full JSON export of all user data)
 
 Dual authentication: Clerk session JWT (primary, for web users) or per-user API key (fallback, for dev/scripts). Audit logging, rate limiting, HTTPS enforcement, request size limits.
 
@@ -66,7 +71,8 @@ React 19 + TypeScript + TailwindCSS 4 multi-page dashboard with:
 - **Scenarios** — Compound scenario tree visualisation, stress test results
 - **Settings** — Profile JSON editor with live analysis (power user mode)
 - **Guided Onboarding Wizard** — 9-step progressive profile creation with smart defaults, template goals, completeness scoring, and localStorage save/resume
-- **Authentication (Clerk)** — Google + email/password sign-in, sign-up, user button, protected routes, profile page with GDPR account deletion
+- **Authentication (Clerk)** — Google + email/password sign-in, sign-up, user button, protected routes, profile page with GDPR data export + account deletion
+- **Legal pages** — Terms of Service, Privacy Policy (GDPR-compliant, FCA positioning), persistent disclaimer banner, footer with regulatory classification
 - Sidebar navigation with active section highlighting
 - Dark mode support
 - WCAG 2.1 AA accessible, colour-blind safe palette
@@ -208,6 +214,8 @@ web/
       Sidebar.tsx                Navigation sidebar with active section highlighting
       ProtectedRoute.tsx         Clerk auth guard (dev mode passthrough)
       ClerkUserButton.tsx        User menu (sign out, manage account)
+      DisclaimerBanner.tsx       Persistent "not financial advice" banner
+      Footer.tsx                 Site footer with Terms/Privacy/Contact links
       ScoreGauge.tsx             SVG score gauge with grade
       MetricCard.tsx             Key metric display card
       CashflowBar.tsx            Recharts cashflow bar chart
@@ -228,7 +236,9 @@ web/
       SettingsPage.tsx           JSON profile editor (power user)
       SignInPage.tsx             Clerk sign-in
       SignUpPage.tsx             Clerk sign-up
-      ProfilePage.tsx            User info + GDPR account deletion
+      ProfilePage.tsx            User info, GDPR data export, account deletion
+      TermsPage.tsx              Terms of Service
+      PrivacyPage.tsx            Privacy Policy (GDPR, FCA positioning)
     wizard/
       WizardPage.tsx             Guided onboarding wizard (9 steps)
       WizardContext.tsx          Wizard state management and save/resume
@@ -293,7 +303,7 @@ See `roadmap.md` for the forward plan. Current status:
 - **v6 (Web + Open Banking):** Complete — React dashboard, TrueLayer, WebSocket, what-if, notifications, WCAG
 - **v7 (Production Hardening):** Complete — Security audit, integration tests, Docker/PostgreSQL, API polish
 - **v8 (Intelligence Engine):** Complete — Monte Carlo, lifetime cashflow, withdrawal sequencing, risk profiling, IHT planning, scenario trees
-- **v9 (Consumer Launch):** In progress — Multi-page dashboard (done), onboarding wizard (done), Clerk auth (done), UI overhaul, pricing, deployment
+- **v9 (Consumer Launch):** In progress — Multi-page dashboard (done), onboarding wizard (done), Clerk auth (done), legal framework (done), UI overhaul, pricing, deployment
 
 ## License
 

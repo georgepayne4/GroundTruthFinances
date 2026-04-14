@@ -50,6 +50,7 @@ def assemble_report(
     estate: EstateResult | None = None,
     sensitivity: SensitivityResult | None = None,
     assumptions_meta: dict | None = None,
+    legal_meta: dict | None = None,
     lifetime_cashflow: dict | None = None,
     withdrawal_sequence: dict | None = None,
     risk_profiling: dict | None = None,
@@ -67,6 +68,7 @@ def assemble_report(
             "profile_name": personal.get("name", "Unknown"),
             "profile_age": personal.get("age"),
             "assumptions": assumptions_meta or {},
+            "legal": legal_meta or {},
         },
         "validation": {
             "flags": validation_flags,

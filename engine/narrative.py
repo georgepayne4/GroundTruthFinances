@@ -30,6 +30,7 @@ def generate_narrative(report: dict) -> str:
     """Generate a full narrative report from the assembled JSON report."""
     sections = [
         _header(report),
+        _disclaimer_banner(report),
         _executive_summary(report),
         _financial_snapshot(report),
         _priority_actions(report),
@@ -42,6 +43,37 @@ def generate_narrative(report: dict) -> str:
         _appendix(report),
     ]
     return "\n\n".join(s for s in sections if s)
+
+
+def _get_legal(report: dict) -> dict:
+    """Extract the legal config from the report (falls back to safe defaults)."""
+    legal = report.get("meta", {}).get("legal") or {}
+    return {
+        "disclaimer_short": legal.get(
+            "disclaimer_short", "Not financial advice. Educational information only."
+        ),
+        "disclaimer_long": legal.get(
+            "disclaimer_long",
+            "This report is for informational purposes only and does not constitute "
+            "financial advice. Consult a qualified financial adviser before making "
+            "significant financial decisions. Past performance is not indicative of "
+            "future results. All projections are estimates based on the stated assumptions.",
+        ),
+        "regulatory_classification": legal.get(
+            "regulatory_classification", "information service"
+        ),
+        "provider_name": legal.get("provider_name", "GroundTruth"),
+    }
+
+
+def _disclaimer_banner(report: dict) -> str:
+    """Prominent disclaimer banner at the top of the report."""
+    legal = _get_legal(report)
+    return (
+        f"> **⚠ {legal['disclaimer_short']}** "
+        f"{legal['provider_name']} is an {legal['regulatory_classification']}, "
+        "not a regulated financial adviser. See the full disclaimer at the end of this report."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -452,12 +484,7 @@ def _appendix(report: dict) -> str:
     lines.append("")
     lines.append("### Disclaimer")
     lines.append("")
-    lines.append(
-        "This report is for informational purposes only and does not constitute "
-        "financial advice. Consult a qualified financial adviser before making "
-        "significant financial decisions. Past performance is not indicative of "
-        "future results. All projections are estimates based on the assumptions "
-        "stated above."
-    )
+    legal = _get_legal(report)
+    lines.append(legal["disclaimer_long"])
 
     return "\n".join(lines)

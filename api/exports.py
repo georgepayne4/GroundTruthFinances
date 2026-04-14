@@ -15,6 +15,22 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+def _get_disclaimer(report: dict[str, Any]) -> str:
+    """Extract the long disclaimer from report meta, with safe default."""
+    legal = report.get("meta", {}).get("legal") or {}
+    return legal.get(
+        "disclaimer_long",
+        "Not financial advice. Educational information only. "
+        "Consult a qualified financial adviser before making significant financial decisions.",
+    )
+
+
+def _get_disclaimer_short(report: dict[str, Any]) -> str:
+    """Extract the short disclaimer from report meta."""
+    legal = report.get("meta", {}).get("legal") or {}
+    return legal.get("disclaimer_short", "Not financial advice. Educational information only.")
+
+
 # ---------------------------------------------------------------------------
 # CSV export
 # ---------------------------------------------------------------------------
@@ -39,6 +55,7 @@ def generate_csv(report: dict[str, Any]) -> str:
 
     rows = [
         ("Section", "Metric", "Value"),
+        ("Disclaimer", "Notice", _get_disclaimer(report)),
         ("Profile", "Name", meta.get("profile_name")),
         ("Profile", "Generated At", meta.get("generated_at")),
         ("Profile", "Engine Version", meta.get("engine_version")),
@@ -96,6 +113,7 @@ def generate_xlsx(report: dict[str, Any]) -> bytes:
     _build_debt_sheet(wb, report)
     _build_goals_sheet(wb, report)
     _build_investments_sheet(wb, report)
+    _build_disclaimer_sheet(wb, report)
 
     # Style all sheet headers
     header_font = Font(bold=True, size=11)
@@ -256,6 +274,16 @@ def _build_investments_sheet(wb, report: dict[str, Any]) -> None:
 
     ws.column_dimensions["A"].width = 36
     ws.column_dimensions["B"].width = 20
+
+
+def _build_disclaimer_sheet(wb, report: dict[str, Any]) -> None:
+    """Add a final sheet with the legal disclaimer. (v9.5)"""
+    ws = wb.create_sheet("Disclaimer")
+    ws.append(["Legal Notice"])
+    ws.append([_get_disclaimer_short(report)])
+    ws.append([])
+    ws.append([_get_disclaimer(report)])
+    ws.column_dimensions["A"].width = 120
 
 
 # ---------------------------------------------------------------------------

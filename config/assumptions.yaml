@@ -417,3 +417,19 @@ monte_carlo:
   percentiles: [10, 25, 50, 75, 90]    # Source: Industry standard reporting bands
   random_seed: null                    # Source: null = non-deterministic; set for reproducibility
   inflation_volatility: 0.01           # Source: BoE inflation targeting tolerance estimate
+
+# v9.5: Legal & regulatory disclaimers (customisable for white-label use)
+legal:
+  disclaimer_short: "Not financial advice. Educational information only."
+  disclaimer_long: >
+    This report is for informational and educational purposes only and does not
+    constitute financial, investment, tax, or legal advice. GroundTruth is an
+    information service, not a regulated financial adviser. Before making any
+    significant financial decision, consult a qualified professional authorised
+    by the Financial Conduct Authority (FCA). Past performance is not indicative
+    of future results. All projections are estimates based on the stated
+    assumptions and may not reflect actual outcomes.
+  regulatory_classification: "information service"  # Not FCA-regulated financial advice
+  fca_reference: "PS22/9 Consumer Duty"
+  provider_name: "GroundTruth"
+  contact_email: "hello@groundtruth.finance"

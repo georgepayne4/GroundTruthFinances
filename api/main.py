@@ -570,7 +570,7 @@ async def export_pdf(
 
 
 # ---------------------------------------------------------------------------
-# Account management (v9.3)
+# Account management (v9.3 / v9.5)
 # ---------------------------------------------------------------------------
 
 @app.delete(
@@ -586,6 +586,21 @@ async def delete_account(
         raise HTTPException(status_code=401, detail="Authentication required for account deletion")
     crud.delete_user_data(db, user.id)
     return {"status": "deleted", "detail": "Account and all associated data have been permanently erased."}
+
+
+@app.get(
+    "/api/v1/account/export",
+    summary="Export all data held for the authenticated user (GDPR right to access)",
+)
+async def export_account(
+    user: User | None = Depends(authenticate),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """GDPR right to access: return all user data as JSON (profiles, reports,
+    bank connections redacted, notifications, audit log)."""
+    if user is None:
+        raise HTTPException(status_code=401, detail="Authentication required for data export")
+    return crud.export_user_data(db, user.id)
 
 
 # ---------------------------------------------------------------------------

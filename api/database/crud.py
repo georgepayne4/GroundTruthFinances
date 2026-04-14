@@ -119,6 +119,109 @@ def get_or_create_user_by_clerk_id(
     return user
 
 
+def export_user_data(db: Session, user_id: int) -> dict[str, Any]:
+    """GDPR right to access: return all data we hold for a user.
+
+    Profile YAML is decrypted to plaintext. Bank tokens are redacted.
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        return {}
+
+    profiles = db.query(Profile).filter(Profile.user_id == user_id).all()
+    reports = (
+        db.query(Report)
+        .join(Profile, Report.profile_id == Profile.id)
+        .filter(Profile.user_id == user_id)
+        .all()
+    )
+    bank_connections = db.query(BankConnection).filter(BankConnection.user_id == user_id).all()
+    notifications = db.query(Notification).filter(Notification.user_id == user_id).all()
+    preferences = (
+        db.query(NotificationPreference).filter(NotificationPreference.user_id == user_id).first()
+    )
+    audit_entries = db.query(AuditLog).filter(AuditLog.user_id == user_id).all()
+
+    return {
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "name": user.name,
+            "clerk_user_id": user.clerk_user_id,
+            "is_admin": user.is_admin,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+        },
+        "profiles": [
+            {
+                "id": p.id,
+                "name": p.name,
+                "yaml_content": get_profile_content(p),
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+                "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+            }
+            for p in profiles
+        ],
+        "reports": [
+            {
+                "id": r.id,
+                "profile_id": r.profile_id,
+                "overall_score": r.overall_score,
+                "grade": r.grade,
+                "generated_at": r.generated_at.isoformat() if r.generated_at else None,
+                "json_content": json.loads(r.json_content) if r.json_content else None,
+            }
+            for r in reports
+        ],
+        "bank_connections": [
+            {
+                "id": bc.id,
+                "provider": bc.provider,
+                "institution_name": bc.institution_name,
+                "status": bc.status,
+                "consent_granted_at": bc.consent_granted_at.isoformat() if bc.consent_granted_at else None,
+                "last_synced_at": bc.last_synced_at.isoformat() if bc.last_synced_at else None,
+                "access_token_enc": "[REDACTED]",
+                "refresh_token_enc": "[REDACTED]",
+            }
+            for bc in bank_connections
+        ],
+        "notifications": [
+            {
+                "id": n.id,
+                "trigger": n.trigger,
+                "severity": n.severity,
+                "title": n.title,
+                "message": n.message,
+                "read_at": n.read_at.isoformat() if n.read_at else None,
+                "created_at": n.created_at.isoformat() if n.created_at else None,
+            }
+            for n in notifications
+        ],
+        "notification_preferences": (
+            {
+                "score_threshold": preferences.score_threshold,
+                "review_interval_days": preferences.review_interval_days,
+                "email_enabled": preferences.email_enabled,
+                "in_app_enabled": preferences.in_app_enabled,
+                "webhook_url": preferences.webhook_url,
+            }
+            if preferences
+            else None
+        ),
+        "audit_log": [
+            {
+                "id": a.id,
+                "endpoint": a.endpoint,
+                "method": a.method,
+                "status_code": a.status_code,
+                "timestamp": a.timestamp.isoformat() if a.timestamp else None,
+            }
+            for a in audit_entries
+        ],
+    }
+
+
 def delete_user_data(db: Session, user_id: int) -> None:
     """GDPR erasure: wipe PII, delete all owned data, soft-delete User row.
 

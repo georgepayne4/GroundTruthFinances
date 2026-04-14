@@ -176,6 +176,7 @@ def run_pipeline_streaming(
         estate=results["estate"],
         sensitivity=results["sensitivity"],
         risk_profiling=results.get("risk_profiling"),
+        legal_meta=assumptions.get("legal", {}),
     )
     yield StageUpdate(
         stage="report",

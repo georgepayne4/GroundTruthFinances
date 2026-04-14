@@ -4,6 +4,8 @@ import { Menu, X } from "lucide-react";
 import Sidebar from "./Sidebar";
 import ThemeToggle from "./ThemeToggle";
 import ClerkUserButton from "./ClerkUserButton";
+import DisclaimerBanner from "./DisclaimerBanner";
+import Footer from "./Footer";
 import { useReport } from "../lib/report-context";
 
 export default function Layout() {
@@ -82,12 +84,14 @@ export default function Layout() {
       {/* Main content */}
       <main
         id="main-content"
-        className="pt-14 md:pl-16 lg:pl-60 min-h-screen"
+        className="pt-14 md:pl-16 lg:pl-60 min-h-screen flex flex-col"
         role="main"
       >
-        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+        <DisclaimerBanner />
+        <div className="flex-1 mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
           <Outlet />
         </div>
+        <Footer />
       </main>
     </div>
   );

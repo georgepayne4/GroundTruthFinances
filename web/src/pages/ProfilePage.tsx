@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useUser, useClerk } from "@clerk/clerk-react";
 import { useNavigate } from "react-router-dom";
-import { Trash2, User, Mail, Calendar } from "lucide-react";
-import { deleteAccount } from "../lib/api";
+import { Trash2, User, Mail, Calendar, Download } from "lucide-react";
+import { deleteAccount, exportAccount } from "../lib/api";
 
 export default function ProfilePage() {
   const { user, isLoaded } = useUser();
@@ -10,6 +10,7 @@ export default function ProfilePage() {
   const navigate = useNavigate();
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (!isLoaded) {
@@ -26,6 +27,27 @@ export default function ProfilePage() {
         Sign in to view your profile.
       </div>
     );
+  }
+
+  async function handleExport() {
+    setExporting(true);
+    setError(null);
+    try {
+      const data = await exportAccount();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `groundtruth-data-${new Date().toISOString().split("T")[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to export data");
+    } finally {
+      setExporting(false);
+    }
   }
 
   async function handleDelete() {
@@ -84,6 +106,23 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Your data (GDPR right to access) */}
+      <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Your Data</h3>
+        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+          Download a complete JSON export of all data we hold about you, including profiles,
+          reports, and account history.
+        </p>
+        <button
+          onClick={handleExport}
+          disabled={exporting}
+          className="mt-4 inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+        >
+          <Download size={16} />
+          {exporting ? "Preparing export..." : "Download my data"}
+        </button>
       </div>
 
       {/* Danger zone */}
