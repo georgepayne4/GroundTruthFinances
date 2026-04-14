@@ -39,8 +39,10 @@ class User(Base):
     email = Column(String(255), unique=True, nullable=False, index=True)
     name = Column(String(255), nullable=True)
     api_key_hash = Column(String(128), nullable=True, index=True)
+    clerk_user_id = Column(String(255), unique=True, nullable=True, index=True)
     is_admin = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
 
     profiles = relationship("Profile", back_populates="user", cascade="all, delete-orphan")
 

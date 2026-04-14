@@ -1,12 +1,35 @@
 const API_KEY = import.meta.env.VITE_API_KEY || "dev-key-change-me";
 const BASE = "/api/v1";
 
+/** Injected by AuthInit — returns a Clerk session JWT. */
+let _getToken: (() => Promise<string | null>) | null = null;
+
+/** Called by AuthInit to wire up Clerk's getToken into this plain module. */
+export function setTokenProvider(fn: () => Promise<string | null>) {
+  _getToken = fn;
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  // Prefer Clerk JWT, fall back to API key
+  if (_getToken) {
+    const token = await _getToken();
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    } else {
+      headers["X-API-Key"] = API_KEY;
+    }
+  } else {
+    headers["X-API-Key"] = API_KEY;
+  }
+
   const res = await fetch(`${BASE}${path}`, {
     ...options,
     headers: {
-      "Content-Type": "application/json",
-      "X-API-Key": API_KEY,
+      ...headers,
       ...options?.headers,
     },
   });
@@ -247,4 +270,8 @@ export interface HistoryRun {
 
 export function getHistory(limit = 10): Promise<{ runs: HistoryRun[]; count: number }> {
   return request(`/history?limit=${limit}`);
+}
+
+export function deleteAccount(): Promise<{ status: string; detail: string }> {
+  return request("/account", { method: "DELETE" });
 }

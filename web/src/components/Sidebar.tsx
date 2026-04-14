@@ -10,6 +10,7 @@ import {
   GitBranch,
   Settings,
   Wand2,
+  UserCircle,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -30,6 +31,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/life-events", label: "Life Events", icon: Calendar },
   { to: "/scenarios", label: "Scenarios", icon: GitBranch },
   { to: "/settings", label: "Settings", icon: Settings },
+  { to: "/profile", label: "Profile", icon: UserCircle },
 ];
 
 interface SidebarProps {

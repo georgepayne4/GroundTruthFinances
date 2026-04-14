@@ -13,7 +13,17 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from api.database.models import Assumption, AuditLog, Profile, Report, Run, User
+from api.database.models import (
+    Assumption,
+    AuditLog,
+    BankConnection,
+    Notification,
+    NotificationPreference,
+    Profile,
+    Report,
+    Run,
+    User,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +89,55 @@ def set_user_api_key(db: Session, user_id: int, api_key_hash: str) -> User | Non
     db.commit()
     db.refresh(user)
     return user
+
+
+def get_or_create_user_by_clerk_id(
+    db: Session, clerk_user_id: str, email: str | None = None, name: str | None = None,
+) -> User:
+    """Find user by Clerk ID, or create one."""
+    user = db.query(User).filter(User.clerk_user_id == clerk_user_id).first()
+    if user is not None:
+        return user
+    # Check if an existing user has this email (link Clerk to existing account)
+    if email:
+        user = db.query(User).filter(User.email == email).first()
+        if user:
+            user.clerk_user_id = clerk_user_id
+            db.commit()
+            db.refresh(user)
+            logger.info("Linked Clerk user %s to existing user %d", clerk_user_id, user.id)
+            return user
+    user = User(
+        clerk_user_id=clerk_user_id,
+        email=email or f"{clerk_user_id}@clerk.local",
+        name=name,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    logger.info("Created Clerk user %d (%s)", user.id, clerk_user_id)
+    return user
+
+
+def delete_user_data(db: Session, user_id: int) -> None:
+    """GDPR erasure: wipe PII, delete all owned data, soft-delete User row.
+
+    Audit log entries remain with user_id set to NULL (ON DELETE SET NULL).
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        return
+    db.query(Profile).filter(Profile.user_id == user_id).delete()
+    db.query(BankConnection).filter(BankConnection.user_id == user_id).delete()
+    db.query(Notification).filter(Notification.user_id == user_id).delete()
+    db.query(NotificationPreference).filter(NotificationPreference.user_id == user_id).delete()
+    user.email = f"deleted-{user.id}@redacted"
+    user.name = None
+    user.api_key_hash = None
+    user.clerk_user_id = None
+    user.deleted_at = datetime.now(timezone.utc)
+    db.commit()
+    logger.info("GDPR erasure complete for user %d", user_id)
 
 
 # ---------------------------------------------------------------------------

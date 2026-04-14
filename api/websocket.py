@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -30,10 +31,58 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+_DEV_MODE = os.environ.get("GROUNDTRUTH_DEV_MODE", "1") == "1"
+_DEV_KEY = os.environ.get("GROUNDTRUTH_API_KEY", "dev-key-change-me")
+
+
+async def _authenticate_ws(websocket: WebSocket) -> bool:
+    """Verify auth from query params before accepting WebSocket connection.
+
+    Accepts ?token=<clerk-jwt> or ?api_key=<key>. In dev mode, allows
+    unauthenticated connections.
+    """
+    token = websocket.query_params.get("token")
+    api_key = websocket.query_params.get("api_key")
+
+    if token:
+        try:
+            from api.clerk_auth import verify_clerk_token
+            verify_clerk_token(token)
+            return True
+        except (ValueError, Exception) as exc:
+            logger.warning("WebSocket Clerk auth failed: %s", exc)
+            await websocket.close(code=4001, reason="Invalid token")
+            return False
+
+    if api_key:
+        if _DEV_MODE and api_key == _DEV_KEY:
+            return True
+        from api.database.session import _get_session_factory
+        from api.dependencies import hash_api_key
+        factory = _get_session_factory()
+        db = factory()
+        try:
+            from api.database import crud
+            user = crud.get_user_by_key_hash(db, hash_api_key(api_key))
+            if user is not None:
+                return True
+        finally:
+            db.close()
+        await websocket.close(code=4001, reason="Invalid API key")
+        return False
+
+    if _DEV_MODE:
+        return True
+
+    await websocket.close(code=4001, reason="Authentication required")
+    return False
+
 
 @router.websocket("/ws/analyse")
 async def ws_analyse(websocket: WebSocket) -> None:
     """WebSocket endpoint for streaming analysis."""
+    if not await _authenticate_ws(websocket):
+        return
     await websocket.accept()
 
     try:

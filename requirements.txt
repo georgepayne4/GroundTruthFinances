@@ -10,3 +10,4 @@ openpyxl>=3.1
 markdown>=3.5
 weasyprint>=60.0
 cryptography>=42.0
+PyJWT>=2.8

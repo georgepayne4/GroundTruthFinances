@@ -3,6 +3,7 @@ import { Outlet, useNavigate } from "react-router-dom";
 import { Menu, X } from "lucide-react";
 import Sidebar from "./Sidebar";
 import ThemeToggle from "./ThemeToggle";
+import ClerkUserButton from "./ClerkUserButton";
 import { useReport } from "../lib/report-context";
 
 export default function Layout() {
@@ -44,6 +45,7 @@ export default function Layout() {
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
+            <ClerkUserButton />
             {report && (
               <button
                 onClick={handleAnalyse}

@@ -34,6 +34,7 @@ from api.database import crud
 from api.database.models import User
 from api.database.session import get_db, init_db
 from api.dependencies import (
+    authenticate,
     generate_api_key,
     get_current_user,
     get_default_assumptions_path,
@@ -192,9 +193,10 @@ async def audit_and_rate_limit(request: Request, call_next) -> Response:
     if path in ("/docs", "/openapi.json", "/redoc"):
         return await call_next(request)
 
-    # Rate limit by API key (or IP if no key)
+    # Rate limit by API key, Clerk token, or IP
     api_key = request.headers.get("X-API-Key", "")
-    rate_key = api_key or request.client.host if request.client else "unknown"
+    auth_header = request.headers.get("Authorization", "")
+    rate_key = api_key or auth_header[:64] or (request.client.host if request.client else "unknown")
 
     if not _check_rate_limit(rate_key):
         return JSONResponse(
@@ -565,6 +567,25 @@ async def export_pdf(
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename=report_{run_id}.pdf"},
     )
+
+
+# ---------------------------------------------------------------------------
+# Account management (v9.3)
+# ---------------------------------------------------------------------------
+
+@app.delete(
+    "/api/v1/account",
+    summary="Delete the authenticated user's account and all data (GDPR erasure)",
+)
+async def delete_account(
+    user: User | None = Depends(authenticate),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    """GDPR right to erasure: wipe PII, delete all owned data, soft-delete User row."""
+    if user is None:
+        raise HTTPException(status_code=401, detail="Authentication required for account deletion")
+    crud.delete_user_data(db, user.id)
+    return {"status": "deleted", "detail": "Account and all associated data have been permanently erased."}
 
 
 # ---------------------------------------------------------------------------

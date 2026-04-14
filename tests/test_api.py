@@ -75,9 +75,9 @@ def _minimal_profile() -> dict:
 # ---------------------------------------------------------------------------
 
 class TestAuth:
-    def test_missing_api_key_returns_422(self):
+    def test_missing_api_key_allowed_in_dev_mode(self):
         resp = client.post("/api/v1/validate", json={"profile": _minimal_profile()})
-        assert resp.status_code == 422
+        assert resp.status_code == 200
 
     def test_wrong_api_key_returns_401(self):
         resp = client.post(

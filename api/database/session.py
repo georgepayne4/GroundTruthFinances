@@ -61,9 +61,34 @@ def get_db() -> Session:
 
 
 def init_db() -> None:
-    """Create all tables. Used for dev/test setup — production uses Alembic."""
+    """Create all tables. Used for dev/test setup — production uses Alembic.
+
+    Also runs lightweight column migrations for SQLite (which doesn't support
+    adding columns via create_all on existing tables).
+    """
     engine = _get_engine()
     Base.metadata.create_all(bind=engine)
+    _migrate_columns(engine)
+
+
+def _migrate_columns(engine) -> None:
+    """Add columns that create_all can't add to existing SQLite tables."""
+    migrations = [
+        ("users", "clerk_user_id", "VARCHAR(255)"),
+        ("users", "deleted_at", "DATETIME"),
+    ]
+    with engine.connect() as conn:
+        for table, column, col_type in migrations:
+            try:
+                conn.execute(
+                    __import__("sqlalchemy").text(
+                        f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"
+                    )
+                )
+                conn.commit()
+            except Exception:
+                # Column already exists — expected on repeat runs
+                conn.rollback()
 
 
 def reset_engine() -> None:
