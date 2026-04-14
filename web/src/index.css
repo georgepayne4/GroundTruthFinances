@@ -1,3 +1,118 @@
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));
+
+/* ----------------------------------------------------------------
+   Motion — subtle, respects reduced-motion preferences
+----------------------------------------------------------------- */
+
+@keyframes gt-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes gt-shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+main > div {
+  animation: gt-fade-in 180ms ease-out both;
+}
+
+.gt-skeleton {
+  position: relative;
+  overflow: hidden;
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.35) 50%,
+    transparent 100%
+  );
+  background-size: 400px 100%;
+  background-repeat: no-repeat;
+  animation: gt-shimmer 1.4s linear infinite;
+}
+
+:where(.dark) .gt-skeleton {
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.06) 50%,
+    transparent 100%
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  main > div,
+  .gt-skeleton {
+    animation: none !important;
+  }
+}
+
+/* ----------------------------------------------------------------
+   Print — clean, single-column financial report layout
+----------------------------------------------------------------- */
+
+@media print {
+  /* Hide all interactive chrome */
+  header[role="banner"],
+  aside[aria-label="Sidebar"],
+  footer,
+  nav,
+  button,
+  [role="alert"],
+  .no-print {
+    display: none !important;
+  }
+
+  /* Reset layout for print: remove fixed offsets, expand width */
+  html, body {
+    background: white !important;
+    color: black !important;
+  }
+
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+  }
+
+  main > div {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    animation: none !important;
+  }
+
+  /* Flatten cards so content flows cleanly on paper */
+  .rounded-xl,
+  .rounded-lg {
+    border: 1px solid #e5e7eb !important;
+    box-shadow: none !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Force readable text colour on all backgrounds */
+  * {
+    color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Avoid orphaned headings */
+  h1, h2, h3 {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  /* Keep tables together where possible */
+  table {
+    page-break-inside: auto;
+  }
+  tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+}

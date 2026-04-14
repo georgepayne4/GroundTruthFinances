@@ -3,6 +3,8 @@ import PageHeader from "../components/PageHeader";
 import CashflowBar from "../components/CashflowBar";
 import MetricCard from "../components/MetricCard";
 import EmptyState from "../components/EmptyState";
+import ErrorBanner from "../components/ErrorBanner";
+import { PageSkeleton } from "../components/Skeleton";
 
 function fmt(n: number | undefined | null): string {
   if (n == null) return "-";
@@ -14,8 +16,10 @@ function pct(n: number): string {
 }
 
 export default function CashflowPage() {
-  const { report } = useReport();
+  const { report, loading, error } = useReport();
 
+  if (error) return <ErrorBanner title="Analysis failed" message={error} />;
+  if (loading && !report) return <PageSkeleton />;
   if (!report) return <EmptyState />;
 
   const { cashflow } = report;

@@ -1,17 +1,41 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
-import { Menu, X } from "lucide-react";
+import { Menu, X, Command as CommandIcon } from "lucide-react";
+import { useClerk } from "@clerk/clerk-react";
 import Sidebar from "./Sidebar";
 import ThemeToggle from "./ThemeToggle";
 import ClerkUserButton from "./ClerkUserButton";
 import DisclaimerBanner from "./DisclaimerBanner";
 import Footer from "./Footer";
+import CommandPalette from "./CommandPalette";
 import { useReport } from "../lib/report-context";
+
+const CLERK_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
+// Wrapper that binds Clerk's signOut into the palette.
+// Kept as a separate component so `useClerk` is only called when ClerkProvider exists.
+function ClerkCommandPalette(props: { open: boolean; onClose: () => void }) {
+  const { signOut } = useClerk();
+  return <CommandPalette {...props} onSignOut={() => signOut({ redirectUrl: "/sign-in" })} />;
+}
 
 export default function Layout() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const { report, loading, analyse, profileJson } = useReport();
   const navigate = useNavigate();
+
+  // Global Cmd+K / Ctrl+K to toggle the command palette
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   async function handleAnalyse() {
     try {
@@ -46,6 +70,17 @@ export default function Layout() {
             <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">GroundTruth</h1>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPaletteOpen(true)}
+              className="hidden items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100 hover:text-gray-700 sm:flex dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+              aria-label="Open command palette"
+            >
+              <CommandIcon size={12} aria-hidden="true" />
+              <span>Search</span>
+              <kbd className="ml-2 rounded border border-gray-200 bg-white px-1 text-[10px] font-medium text-gray-400 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-500">
+                ⌘K
+              </kbd>
+            </button>
             <ThemeToggle />
             <ClerkUserButton />
             {report && (
@@ -93,6 +128,13 @@ export default function Layout() {
         </div>
         <Footer />
       </main>
+
+      {/* Command palette */}
+      {CLERK_KEY ? (
+        <ClerkCommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      ) : (
+        <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      )}
     </div>
   );
 }

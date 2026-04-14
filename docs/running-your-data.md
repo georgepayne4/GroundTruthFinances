@@ -67,18 +67,7 @@ python main.py --diff                                          # diff latest two
 
 This is the path that mirrors what real users will experience.
 
-### Step 1 — Convert YAML to JSON
-
-The Settings page currently accepts **JSON only**. Convert your YAML profile once:
-
-```bash
-python -c "import yaml, json; print(json.dumps(yaml.safe_load(open('config/your_profile.yaml')), default=str, indent=2))" > your_profile.json
-```
-
-!!! info "YAML upload support"
-    Direct YAML upload (and file picker) in the Settings page is a planned v9.4 UI improvement. Until then, convert with the one-liner above.
-
-### Step 2 — Start the stack
+### Step 1 — Start the stack
 
 Two terminals:
 
@@ -98,21 +87,30 @@ cd web && npm run dev
 
 Dashboard at http://localhost:5173. Vite proxies `/api` calls to the backend automatically.
 
-### Step 3 — Sign in (or skip in dev mode)
+### Step 2 — Sign in (or skip in dev mode)
 
 Open http://localhost:5173:
 
 - **With Clerk configured:** you'll be redirected to `/sign-in`. Create a test account (use a real email you can verify).
 - **Without Clerk:** the frontend detects dev mode and loads straight to the dashboard.
 
-### Step 4 — Paste your profile and run analysis
+### Step 3 — Load your profile and run analysis
 
-1. Click **Settings** in the sidebar.
-2. Paste the contents of `your_profile.json` into the textarea.
-3. Click **Run Analysis**.
-4. You should land on the **Home** page with your score, grade, and priority actions.
+Click **Settings** in the sidebar. You have four ways to load a profile:
 
-### Step 5 — Explore every page
+1. **Upload file** — click **Upload file** and pick your `.yaml`, `.yml`, or `.json` profile. Both YAML and JSON are auto-detected from the file contents.
+2. **Drag and drop** — drop the file anywhere on the editor. Same format detection.
+3. **Paste** — paste YAML or JSON directly into the textarea. A "(YAML detected)" / "(JSON detected)" label appears live as you type.
+4. **Load sample** — click **Load sample** to populate the editor with the bundled `config/sample_input.yaml`. Useful for a quick end-to-end demo.
+
+Parse errors appear inline with the exact line number (for YAML) or parser message (for JSON) — no browser alerts. Fix the error and it clears automatically on next valid input.
+
+Click **Run Analysis**. You should land on the **Home** page with your score, grade, and priority actions.
+
+!!! tip "Command palette"
+    Press **⌘K** (Mac) or **Ctrl+K** (Windows/Linux) from any page to jump to a section, re-run analysis, toggle dark mode, or sign out. Works everywhere once signed in.
+
+### Step 4 — Explore every page
 
 Work through the sidebar top to bottom. Each page is explained in the [User Guide](user-guide/index.md):
 
@@ -126,7 +124,7 @@ Work through the sidebar top to bottom. Each page is explained in the [User Guid
 - **Scenarios** — job loss runway, rate shock, market drawdown, compound trees
 - **Profile** — GDPR data export, account deletion
 
-### Step 6 — Test the GDPR export
+### Step 5 — Test the GDPR export
 
 On the **Profile** page, click **Download my data**. You should receive a JSON file containing every piece of data the platform holds about you — profile, reports, audit log, notifications. Open it in a text editor to confirm your data is there and sensitive fields (bank tokens, if any) are redacted.
 
@@ -135,7 +133,13 @@ On the **Profile** page, click **Download my data**. You should receive a JSON f
 
 ## Option C — API directly
 
-For scripted testing or integration work:
+For scripted testing or integration work. The API accepts JSON only, so convert YAML once:
+
+```bash
+python -c "import yaml, json; print(json.dumps(yaml.safe_load(open('config/your_profile.yaml')), default=str, indent=2))" > your_profile.json
+```
+
+Then:
 
 ```bash
 # With API key (dev default)
@@ -155,8 +159,8 @@ See the [API Reference](api-reference.md) for every endpoint.
 
 ## Troubleshooting
 
-**"Invalid JSON" alert when clicking Run Analysis.**  
-The Settings page validates JSON syntax. Re-run the YAML→JSON conversion one-liner; if it still fails, check for tabs vs spaces or trailing commas.
+**Inline parse error on Settings.**  
+The Settings page auto-detects YAML vs JSON. YAML errors show a line number; JSON errors show the parser message. Fix the offending line and the error clears automatically. For YAML, check indentation (spaces only, no tabs) and that lists use `- ` with a space.
 
 **Analysis fails with validation errors.**  
 The validator returned `error`-severity flags. Check the browser console or the `outputs/engine.log` file — each flag says which field is wrong. Fix and re-analyse.

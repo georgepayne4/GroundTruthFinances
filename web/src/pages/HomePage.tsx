@@ -5,6 +5,8 @@ import MetricCard from "../components/MetricCard";
 import PriorityActions from "../components/PriorityActions";
 import ScoreGauge from "../components/ScoreGauge";
 import EmptyState from "../components/EmptyState";
+import ErrorBanner from "../components/ErrorBanner";
+import { DashboardSkeleton } from "../components/Skeleton";
 
 function fmt(n: number | undefined | null): string {
   if (n == null) return "-";
@@ -12,19 +14,11 @@ function fmt(n: number | undefined | null): string {
 }
 
 export default function HomePage() {
-  const { report, error } = useReport();
+  const { report, loading, error } = useReport();
 
-  if (error) {
-    return (
-      <div role="alert" className="rounded-lg bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-800 dark:text-red-200">
-        {error}
-      </div>
-    );
-  }
-
-  if (!report) {
-    return <EmptyState />;
-  }
+  if (error) return <ErrorBanner title="Analysis failed" message={error} />;
+  if (loading && !report) return <DashboardSkeleton />;
+  if (!report) return <EmptyState />;
 
   const { scoring, cashflow, debt, goals, investments, advisor_insights } = report;
 

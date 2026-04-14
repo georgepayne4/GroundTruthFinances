@@ -69,12 +69,15 @@ React 19 + TypeScript + TailwindCSS 4 multi-page dashboard with:
 - **Mortgage** — Readiness checklist, LTV band explorer, overpayment scenarios
 - **Life Events** — Timeline with milestones, year-by-year projection with net worth trajectory
 - **Scenarios** — Compound scenario tree visualisation, stress test results
-- **Settings** — Profile JSON editor with live analysis (power user mode)
+- **Settings** — Profile editor supporting both YAML and JSON (auto-detected), drag-and-drop file upload, sample loader, JSON export, inline parse errors with line numbers
 - **Guided Onboarding Wizard** — 9-step progressive profile creation with smart defaults, template goals, completeness scoring, and localStorage save/resume
 - **Authentication (Clerk)** — Google + email/password sign-in, sign-up, user button, protected routes, profile page with GDPR data export + account deletion
 - **Legal pages** — Terms of Service, Privacy Policy (GDPR-compliant, FCA positioning), persistent disclaimer banner, footer with regulatory classification
+- **Command palette (Cmd+K / Ctrl+K)** — global keyboard-driven navigation, re-analyse, theme toggle, sign out
 - Sidebar navigation with active section highlighting
-- Dark mode support
+- Loading skeletons and inline error banners (no blocking alerts)
+- Print-optimised stylesheet for exporting reports to PDF from the browser
+- Dark mode support with respect for `prefers-reduced-motion`
 - WCAG 2.1 AA accessible, colour-blind safe palette
 
 ### Open Banking (TrueLayer)
@@ -212,6 +215,7 @@ web/
     components/
       Layout.tsx                 App shell with header, sidebar, responsive layout
       Sidebar.tsx                Navigation sidebar with active section highlighting
+      CommandPalette.tsx         Global Cmd+K palette (navigate, re-analyse, sign out)
       ProtectedRoute.tsx         Clerk auth guard (dev mode passthrough)
       ClerkUserButton.tsx        User menu (sign out, manage account)
       DisclaimerBanner.tsx       Persistent "not financial advice" banner
@@ -223,6 +227,8 @@ web/
       PriorityActions.tsx        Priority action list
       PageHeader.tsx             Reusable page header
       EmptyState.tsx             Empty state with call to action
+      ErrorBanner.tsx            Inline dismissible error alerts
+      Skeleton.tsx               Shimmer loading skeletons (dashboard, page, card)
       ThemeToggle.tsx            Dark mode toggle
     pages/
       HomePage.tsx               Dashboard overview
@@ -233,7 +239,7 @@ web/
       MortgagePage.tsx           Mortgage readiness and LTV page
       LifeEventsPage.tsx         Life events timeline page
       ScenariosPage.tsx          Stress tests and scenario trees page
-      SettingsPage.tsx           JSON profile editor (power user)
+      SettingsPage.tsx           YAML/JSON profile editor with drag-drop upload
       SignInPage.tsx             Clerk sign-in
       SignUpPage.tsx             Clerk sign-up
       ProfilePage.tsx            User info, GDPR data export, account deletion

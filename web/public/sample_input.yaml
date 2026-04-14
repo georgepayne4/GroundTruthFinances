@@ -1,0 +1,169 @@
+# ==============================================================================
+# Sample Financial Profile — Alex Morgan
+# ==============================================================================
+
+personal:
+  name: "Alex Morgan"
+  age: 31
+  retirement_age: 65
+  dependents: 0
+  risk_profile: "moderate"        # conservative | moderate | aggressive | very_aggressive
+  salary_growth_outlook: "average" # low | average | high
+  employment_type: "employed"      # employed | self_employed | contractor | mixed
+  has_will: false
+  has_lpa: false
+
+income:
+  primary_gross_annual: 58000
+  partner_gross_annual: 0
+  rental_income_monthly: 0
+  side_income_monthly: 350
+  investment_income_annual: 200
+  bonus_annual_low: 0
+  bonus_annual_expected: 0
+  bonus_annual_high: 0
+
+expenses:
+  housing:
+    rent_monthly: 1100
+    council_tax_monthly: 145
+    utilities_monthly: 160
+    insurance_monthly: 30
+  transport:
+    car_payment_monthly: 0
+    fuel_monthly: 80
+    public_transport_monthly: 140
+  living:
+    groceries_monthly: 350
+    dining_out_monthly: 120
+    subscriptions_monthly: 65
+    clothing_monthly: 50
+    personal_care_monthly: 30
+  other:
+    phone_monthly: 35
+    gym_monthly: 40
+    holidays_annual: 2000
+    gifts_annual: 500
+    miscellaneous_monthly: 100
+
+debts:
+  - name: "Student Loan - Undergrad (Plan 2)"
+    balance: 28000
+    interest_rate: 0.065
+    minimum_payment_monthly: 180
+    type: "student_loan"
+  - name: "Student Loan - Postgrad (Plan 3)"
+    balance: 12000
+    interest_rate: 0.065
+    minimum_payment_monthly: 50
+    type: "student_loan_postgrad"
+  - name: "Credit Card"
+    type: "credit_card"
+    balance: 3200                  # legacy field — equals current_balance for revolvers
+    interest_rate: 0.219
+    minimum_payment_monthly: 95
+    # v5.2-03 credit card model fields
+    statement_balance: 3200        # last statement balance (revolver — not cleared)
+    current_balance: 3200          # live balance
+    credit_limit: 5000             # 64% utilisation — high
+    payment_behaviour: "minimum"   # full | minimum | fixed_amount
+    monthly_spend: 200             # average new spend per month
+  - name: "Personal Loan"
+    balance: 5500
+    interest_rate: 0.049
+    minimum_payment_monthly: 150
+    type: "personal_loan"
+
+savings:
+  emergency_fund: 4200
+  emergency_fund_type: "cash"
+  general_savings: 2800
+  isa_balance: 6500
+  pension_balance: 18000
+  pension_employer_contribution_pct: 0.05
+  pension_personal_contribution_pct: 0.05
+  pension_employer_match_cap_pct: 0.05
+  other_investments: 0
+  investment_fees:
+    isa_platform_fee: 0.0015
+    isa_fund_ocf: 0.0022
+    pension_platform_fee: 0.003
+    pension_fund_ocf: 0.002
+  isa_contributions_this_year: 0
+  lisa_contributions_this_year: 0
+
+# v5.2-04: Multi-account balance tracking (optional).
+# When present, accounts override the direct savings fields they map to,
+# becoming the single source of truth. Each account maps to a savings
+# field by 'maps_to' or by 'type' (current/savings → general_savings,
+# isa → isa_balance, lisa → lisa_balance, pension → pension_balance,
+# investment → other_investments).
+accounts:
+  - name: "Monzo Current Account"
+    type: "current"
+    balance: 1500
+    maps_to: "general_savings"
+  - name: "Chase Easy Access Saver"
+    type: "easy_access"
+    balance: 4200
+    maps_to: "emergency_fund"
+  - name: "Trading 212 ISA"
+    type: "stocks_and_shares_isa"
+    balance: 6500
+  - name: "Workplace Pension - Aviva"
+    type: "pension"
+    balance: 18000
+  - name: "Monzo Joint Savings"
+    type: "savings"
+    balance: 1300
+
+goals:
+  - name: "Build 6-month emergency fund"
+    target_amount: 14000
+    deadline_years: 2
+    priority: "high"
+    category: "safety_net"
+  - name: "Buy first home"
+    target_amount: 35000
+    deadline_years: 4
+    priority: "high"
+    category: "property"
+    property_target_price: 280000
+  - name: "Career development course"
+    target_amount: 3500
+    deadline_years: 1
+    priority: "medium"
+    category: "education"
+  - name: "Wedding fund"
+    target_amount: 15000
+    deadline_years: 5
+    priority: "low"
+    category: "lifestyle"
+
+mortgage:
+  target_property_value: 280000
+  preferred_deposit_pct: 0.15
+  preferred_term_years: 30
+  joint_application: false
+
+life_events:
+  - year_offset: 1
+    description: "Salary increase after promotion"
+    income_change_annual: 4000
+  - year_offset: 3
+    description: "Partner income begins"
+    income_change_annual: 32000
+  - year_offset: 4
+    description: "Purchase first home"
+    one_off_expense: 45000
+    monthly_expense_change: 200
+  - year_offset: 5
+    description: "First child"
+    monthly_expense_change: 800
+  - year_offset: 6
+    description: "Childcare costs"
+    monthly_expense_change: 2000
+    type: "childcare"
+  - year_offset: 7
+    description: "Expected inheritance"
+    one_off_income: 25000
