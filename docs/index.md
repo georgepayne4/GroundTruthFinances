@@ -34,6 +34,7 @@ See [Legal & Compliance](legal.md) for the full regulatory position.
 ## Where to start
 
 - **New here?** → [Getting Started](getting-started.md)
+- **Testing with your own data locally?** → [Running Your Own Data](running-your-data.md)
 - **Using the dashboard?** → [User Guide](user-guide/index.md)
 - **Building a profile?** → [Profile Guide](profile-guide.md)
 - **Calling the API?** → [API Reference](api-reference.md)
