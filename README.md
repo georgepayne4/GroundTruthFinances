@@ -50,7 +50,9 @@ Full-featured API with:
 - `POST /api/v1/export/{id}/{format}` — CSV, XLSX, PDF exports
 - WebSocket `/ws/analyse` — Real-time streaming analysis
 
-Per-user API key authentication, audit logging, rate limiting, HTTPS enforcement, request size limits.
+- `DELETE /api/v1/account` — GDPR account erasure (wipes PII, cascades owned data)
+
+Dual authentication: Clerk session JWT (primary, for web users) or per-user API key (fallback, for dev/scripts). Audit logging, rate limiting, HTTPS enforcement, request size limits.
 
 ### Web Dashboard (React)
 React 19 + TypeScript + TailwindCSS 4 multi-page dashboard with:
@@ -64,6 +66,7 @@ React 19 + TypeScript + TailwindCSS 4 multi-page dashboard with:
 - **Scenarios** — Compound scenario tree visualisation, stress test results
 - **Settings** — Profile JSON editor with live analysis (power user mode)
 - **Guided Onboarding Wizard** — 9-step progressive profile creation with smart defaults, template goals, completeness scoring, and localStorage save/resume
+- **Authentication (Clerk)** — Google + email/password sign-in, sign-up, user button, protected routes, profile page with GDPR account deletion
 - Sidebar navigation with active section highlighting
 - Dark mode support
 - WCAG 2.1 AA accessible, colour-blind safe palette
@@ -183,9 +186,10 @@ engine/
 api/
   main.py                        FastAPI application
   models.py                      Pydantic request/response models
-  dependencies.py                Auth, rate limiting, dependency injection
+  dependencies.py                Dual auth (Clerk + API key), rate limiting, DI
+  clerk_auth.py                  Clerk JWT verification (JWKS, RS256)
   exports.py                     CSV/XLSX/PDF report generation
-  websocket.py                   WebSocket streaming endpoint
+  websocket.py                   WebSocket streaming endpoint (authenticated)
   whatif.py                      What-If explorer
   comparison.py                  Profile comparison and branching
   cashflow_actual.py             Planned vs actual drift detection
@@ -198,9 +202,12 @@ web/
     lib/
       api.ts                     Typed API client with full report interfaces
       report-context.tsx         React Context for report state management
+      AuthInit.tsx               Bridges Clerk getToken into api.ts
     components/
       Layout.tsx                 App shell with header, sidebar, responsive layout
       Sidebar.tsx                Navigation sidebar with active section highlighting
+      ProtectedRoute.tsx         Clerk auth guard (dev mode passthrough)
+      ClerkUserButton.tsx        User menu (sign out, manage account)
       ScoreGauge.tsx             SVG score gauge with grade
       MetricCard.tsx             Key metric display card
       CashflowBar.tsx            Recharts cashflow bar chart
@@ -219,6 +226,9 @@ web/
       LifeEventsPage.tsx         Life events timeline page
       ScenariosPage.tsx          Stress tests and scenario trees page
       SettingsPage.tsx           JSON profile editor (power user)
+      SignInPage.tsx             Clerk sign-in
+      SignUpPage.tsx             Clerk sign-up
+      ProfilePage.tsx            User info + GDPR account deletion
     wizard/
       WizardPage.tsx             Guided onboarding wizard (9 steps)
       WizardContext.tsx          Wizard state management and save/resume
@@ -283,7 +293,7 @@ See `roadmap.md` for the forward plan. Current status:
 - **v6 (Web + Open Banking):** Complete — React dashboard, TrueLayer, WebSocket, what-if, notifications, WCAG
 - **v7 (Production Hardening):** Complete — Security audit, integration tests, Docker/PostgreSQL, API polish
 - **v8 (Intelligence Engine):** Complete — Monte Carlo, lifetime cashflow, withdrawal sequencing, risk profiling, IHT planning, scenario trees
-- **v9 (Consumer Launch):** In progress — Multi-page dashboard (done), onboarding wizard (done), auth, UI overhaul, pricing, deployment
+- **v9 (Consumer Launch):** In progress — Multi-page dashboard (done), onboarding wizard (done), Clerk auth (done), UI overhaul, pricing, deployment
 
 ## License
 
