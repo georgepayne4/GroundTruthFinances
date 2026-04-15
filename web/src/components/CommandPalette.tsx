@@ -44,6 +44,8 @@ export default function CommandPalette({ open, onClose, onSignOut }: CommandPale
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const lastFocusedRef = useRef<HTMLElement | null>(null);
 
   const commands: Command[] = useMemo(() => {
     const go = (path: string) => () => {
@@ -119,19 +121,55 @@ export default function CommandPalette({ open, onClose, onSignOut }: CommandPale
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return commands;
-    return commands.filter((c) => {
-      const haystack = `${c.label} ${c.group} ${c.keywords ?? ""}`.toLowerCase();
-      return haystack.includes(q);
-    });
+
+    // Subsequence match: every query char must appear in order in the haystack.
+    // Score rewards consecutive matches and prefix matches on label.
+    const scored = commands
+      .map((c) => {
+        const label = c.label.toLowerCase();
+        const haystack = `${c.label} ${c.group} ${c.keywords ?? ""}`.toLowerCase();
+        let qi = 0;
+        let score = 0;
+        let consecutive = 0;
+        let lastMatchIdx = -1;
+        for (let hi = 0; hi < haystack.length && qi < q.length; hi++) {
+          if (haystack[hi] === q[qi]) {
+            // Consecutive-match bonus
+            if (lastMatchIdx === hi - 1) {
+              consecutive++;
+              score += 2 + consecutive;
+            } else {
+              consecutive = 0;
+              score += 1;
+            }
+            lastMatchIdx = hi;
+            qi++;
+          }
+        }
+        if (qi < q.length) return null;
+        // Prefix bonus if label starts with the query
+        if (label.startsWith(q)) score += 10;
+        // Small bonus if any label word starts with the query
+        else if (label.split(/\s+/).some((w) => w.startsWith(q))) score += 5;
+        return { cmd: c, score };
+      })
+      .filter((s): s is { cmd: Command; score: number } => s !== null);
+
+    // Sort by score desc; preserve original order for ties
+    scored.sort((a, b) => b.score - a.score);
+    return scored.map((s) => s.cmd);
   }, [commands, query]);
 
-  // Reset state on open/close
+  // Reset state on open/close; capture/restore focus
   useEffect(() => {
     if (open) {
+      lastFocusedRef.current = document.activeElement as HTMLElement | null;
       setQuery("");
       setActive(0);
       // Defer to allow render before focus
       requestAnimationFrame(() => inputRef.current?.focus());
+    } else {
+      lastFocusedRef.current?.focus();
     }
   }, [open]);
 
@@ -165,6 +203,24 @@ export default function CommandPalette({ open, onClose, onSignOut }: CommandPale
     } else if (e.key === "Escape") {
       e.preventDefault();
       onClose();
+    } else if (e.key === "Tab") {
+      // Focus trap: cycle within dialog focusable elements
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+      const focusables = dialog.querySelectorAll<HTMLElement>(
+        'input, [role="option"], button, [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const activeEl = document.activeElement as HTMLElement | null;
+      if (e.shiftKey && activeEl === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && activeEl === last) {
+        e.preventDefault();
+        first.focus();
+      }
     }
   }
 
@@ -185,6 +241,7 @@ export default function CommandPalette({ open, onClose, onSignOut }: CommandPale
     >
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" aria-hidden="true" />
       <div
+        ref={dialogRef}
         className="relative w-full max-w-xl overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-900"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={handleKeyDown}
