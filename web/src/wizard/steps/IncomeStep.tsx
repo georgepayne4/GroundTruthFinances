@@ -4,6 +4,7 @@ import StepShell from "../components/StepShell";
 import FieldGroup from "../components/FieldGroup";
 import CurrencyInput from "../components/CurrencyInput";
 import { ChevronDown } from "lucide-react";
+import { validateNumber, hasErrors } from "../lib/validation";
 
 interface IncomeStepProps {
   data: IncomeData;
@@ -21,13 +22,30 @@ export default function IncomeStep({ data, onChange, onNext, onBack }: IncomeSte
   const incomeError =
     data.primary_gross_annual != null && data.primary_gross_annual <= 0
       ? "Enter your gross annual salary"
-      : undefined;
+      : validateNumber(data.primary_gross_annual, { max: 10_000_000, label: "Salary" });
   const incomeWarning =
     data.primary_gross_annual != null && data.primary_gross_annual > 0 && data.primary_gross_annual < 10000
       ? "This looks low — is this your annual (not monthly) salary?"
       : undefined;
 
-  const canProceed = data.primary_gross_annual != null && data.primary_gross_annual > 0;
+  const errors = {
+    income: incomeError,
+    partner: showPartner
+      ? validateNumber(data.partner_gross_annual, { min: 0, max: 10_000_000, label: "Partner salary" })
+      : undefined,
+    rental: showOther
+      ? validateNumber(data.rental_income_monthly, { min: 0, max: 1_000_000, label: "Rental income" })
+      : undefined,
+    side: showOther
+      ? validateNumber(data.side_income_monthly, { min: 0, max: 1_000_000, label: "Side income" })
+      : undefined,
+    bonus: showOther
+      ? validateNumber(data.bonus_annual_expected, { min: 0, max: 10_000_000, label: "Bonus" })
+      : undefined,
+  };
+
+  const canProceed =
+    data.primary_gross_annual != null && data.primary_gross_annual > 0 && !hasErrors(errors);
 
   return (
     <StepShell
@@ -40,7 +58,7 @@ export default function IncomeStep({ data, onChange, onNext, onBack }: IncomeSte
       <FieldGroup
         label="Gross annual salary"
         htmlFor="income-primary"
-        error={incomeError}
+        error={errors.income}
         helpText={incomeWarning || "Your total annual salary before tax and deductions"}
         required
       >
@@ -51,7 +69,7 @@ export default function IncomeStep({ data, onChange, onNext, onBack }: IncomeSte
           min={0}
           placeholder="e.g. 50000"
           required
-          aria-describedby={incomeError ? "income-primary-error" : "income-primary-help"}
+          error={errors.income}
         />
       </FieldGroup>
 
@@ -66,12 +84,13 @@ export default function IncomeStep({ data, onChange, onNext, onBack }: IncomeSte
       </button>
 
       {showPartner && (
-        <FieldGroup label="Partner gross annual salary" htmlFor="income-partner">
+        <FieldGroup label="Partner gross annual salary" htmlFor="income-partner" error={errors.partner}>
           <CurrencyInput
             id="income-partner"
             value={data.partner_gross_annual || null}
             onChange={(v) => onChange({ partner_gross_annual: v })}
             min={0}
+            error={errors.partner}
           />
         </FieldGroup>
       )}
@@ -88,28 +107,31 @@ export default function IncomeStep({ data, onChange, onNext, onBack }: IncomeSte
 
       {showOther && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-          <FieldGroup label="Rental income (monthly)" htmlFor="income-rental">
+          <FieldGroup label="Rental income (monthly)" htmlFor="income-rental" error={errors.rental}>
             <CurrencyInput
               id="income-rental"
               value={data.rental_income_monthly || null}
               onChange={(v) => onChange({ rental_income_monthly: v })}
               min={0}
+              error={errors.rental}
             />
           </FieldGroup>
-          <FieldGroup label="Side income (monthly)" htmlFor="income-side">
+          <FieldGroup label="Side income (monthly)" htmlFor="income-side" error={errors.side}>
             <CurrencyInput
               id="income-side"
               value={data.side_income_monthly || null}
               onChange={(v) => onChange({ side_income_monthly: v })}
               min={0}
+              error={errors.side}
             />
           </FieldGroup>
-          <FieldGroup label="Expected annual bonus" htmlFor="income-bonus">
+          <FieldGroup label="Expected annual bonus" htmlFor="income-bonus" error={errors.bonus}>
             <CurrencyInput
               id="income-bonus"
               value={data.bonus_annual_expected || null}
               onChange={(v) => onChange({ bonus_annual_expected: v })}
               min={0}
+              error={errors.bonus}
             />
           </FieldGroup>
         </div>

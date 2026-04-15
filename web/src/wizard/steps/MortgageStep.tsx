@@ -4,6 +4,7 @@ import FieldGroup from "../components/FieldGroup";
 import CurrencyInput from "../components/CurrencyInput";
 import PercentInput from "../components/PercentInput";
 import ToggleField from "../components/ToggleField";
+import { validateNumber, hasErrors } from "../lib/validation";
 
 interface MortgageStepProps {
   data: MortgageData;
@@ -14,6 +15,22 @@ interface MortgageStepProps {
 }
 
 export default function MortgageStep({ data, onChange, onNext, onBack, onSkip }: MortgageStepProps) {
+  const errors = data.enabled
+    ? {
+        value: validateNumber(data.target_property_value, { min: 0, max: 100_000_000, label: "Property value" }),
+        deposit:
+          data.preferred_deposit_pct < 0 || data.preferred_deposit_pct > 1
+            ? "Deposit must be between 0 and 100%"
+            : undefined,
+        term: validateNumber(data.preferred_term_years, { min: 5, max: 40, label: "Mortgage term" }),
+      }
+    : { value: undefined, deposit: undefined, term: undefined };
+
+  const canProceed = !hasErrors(errors);
+  const termBorder = errors.term
+    ? "border-red-500 dark:border-red-500 focus:ring-red-500"
+    : "border-gray-300 dark:border-gray-700 focus:ring-gray-900 dark:focus:ring-gray-100";
+
   return (
     <StepShell
       title="Mortgage"
@@ -24,6 +41,7 @@ export default function MortgageStep({ data, onChange, onNext, onBack, onSkip }:
         onChange({ enabled: false });
         onSkip();
       }}
+      canProceed={canProceed}
     >
       <ToggleField
         id="mortgage-enabled"
@@ -34,25 +52,27 @@ export default function MortgageStep({ data, onChange, onNext, onBack, onSkip }:
 
       {data.enabled && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-          <FieldGroup label="Target property value" htmlFor="mortgage-value">
+          <FieldGroup label="Target property value" htmlFor="mortgage-value" error={errors.value}>
             <CurrencyInput
               id="mortgage-value"
               value={data.target_property_value || null}
               onChange={(v) => onChange({ target_property_value: v })}
               min={0}
               placeholder="e.g. 300000"
+              error={errors.value}
             />
           </FieldGroup>
-          <FieldGroup label="Deposit percentage" htmlFor="mortgage-deposit" helpText="Minimum 5%, recommended 10-15%">
+          <FieldGroup label="Deposit percentage" htmlFor="mortgage-deposit" error={errors.deposit} helpText={errors.deposit ? undefined : "Minimum 5%, recommended 10-15%"}>
             <PercentInput
               id="mortgage-deposit"
               value={data.preferred_deposit_pct}
               onChange={(v) => onChange({ preferred_deposit_pct: v })}
               min={0}
               max={100}
+              error={errors.deposit}
             />
           </FieldGroup>
-          <FieldGroup label="Mortgage term (years)" htmlFor="mortgage-term">
+          <FieldGroup label="Mortgage term (years)" htmlFor="mortgage-term" error={errors.term}>
             <input
               id="mortgage-term"
               type="number"
@@ -61,7 +81,9 @@ export default function MortgageStep({ data, onChange, onNext, onBack, onSkip }:
               onChange={(e) => onChange({ preferred_term_years: e.target.value === "" ? 25 : Number(e.target.value) })}
               min={5}
               max={40}
-              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-100 focus:border-transparent"
+              aria-invalid={!!errors.term}
+              aria-describedby={errors.term ? "mortgage-term-error" : undefined}
+              className={`w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:border-transparent ${termBorder}`}
             />
           </FieldGroup>
           <div className="flex items-end pb-1">

@@ -5,6 +5,7 @@ import CurrencyInput from "../components/CurrencyInput";
 import SelectField from "../components/SelectField";
 import DynamicList from "../components/DynamicList";
 import TemplateGoalPicker from "../components/TemplateGoalPicker";
+import { validateNumber } from "../lib/validation";
 
 interface GoalsStepProps {
   data: GoalItem[];
@@ -40,12 +41,24 @@ function createGoal(): GoalItem {
   };
 }
 
+function goalErrors(item: GoalItem) {
+  return {
+    target: validateNumber(item.target_amount, { min: 0, max: 100_000_000, label: "Target amount" }),
+    deadline: validateNumber(item.deadline_years, { min: 1, max: 60, label: "Deadline" }),
+  };
+}
+
 export default function GoalsStep({ data, wizardState, onChange, onNext, onBack, onSkip }: GoalsStepProps) {
   const updateItem = (index: number, updates: Partial<GoalItem>) => {
     const next = [...data];
     next[index] = { ...next[index], ...updates };
     onChange(next);
   };
+
+  const canProceed = data.every((item) => {
+    const e = goalErrors(item);
+    return !e.target && !e.deadline;
+  });
 
   return (
     <StepShell
@@ -54,6 +67,7 @@ export default function GoalsStep({ data, wizardState, onChange, onNext, onBack,
       onNext={onNext}
       onBack={onBack}
       onSkip={onSkip}
+      canProceed={canProceed}
     >
       <div>
         <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Quick add</p>
@@ -73,7 +87,12 @@ export default function GoalsStep({ data, wizardState, onChange, onNext, onBack,
           addLabel="Add custom goal"
           emptyMessage="No goals yet. Use the templates above or add a custom goal."
           itemLabel={(item) => item.name || "Unnamed goal"}
-          renderItem={(item, i) => (
+          renderItem={(item, i) => {
+            const errors = goalErrors(item);
+            const deadlineBorder = errors.deadline
+              ? "border-red-500 dark:border-red-500 focus:ring-red-500"
+              : "border-gray-300 dark:border-gray-700 focus:ring-gray-900 dark:focus:ring-gray-100";
+            return (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pr-8">
               <FieldGroup label="Goal name" htmlFor={`goal-name-${i}`}>
                 <input
@@ -85,15 +104,16 @@ export default function GoalsStep({ data, wizardState, onChange, onNext, onBack,
                   className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-100 focus:border-transparent"
                 />
               </FieldGroup>
-              <FieldGroup label="Target amount" htmlFor={`goal-target-${i}`}>
+              <FieldGroup label="Target amount" htmlFor={`goal-target-${i}`} error={errors.target}>
                 <CurrencyInput
                   id={`goal-target-${i}`}
                   value={item.target_amount || null}
                   onChange={(v) => updateItem(i, { target_amount: v })}
                   min={0}
+                  error={errors.target}
                 />
               </FieldGroup>
-              <FieldGroup label="Deadline (years)" htmlFor={`goal-deadline-${i}`}>
+              <FieldGroup label="Deadline (years)" htmlFor={`goal-deadline-${i}`} error={errors.deadline}>
                 <input
                   id={`goal-deadline-${i}`}
                   type="number"
@@ -102,7 +122,9 @@ export default function GoalsStep({ data, wizardState, onChange, onNext, onBack,
                   onChange={(e) => updateItem(i, { deadline_years: e.target.value === "" ? 0 : Number(e.target.value) })}
                   min={1}
                   max={60}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-100 focus:border-transparent"
+                  aria-invalid={!!errors.deadline}
+                  aria-describedby={errors.deadline ? `goal-deadline-${i}-error` : undefined}
+                  className={`w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:border-transparent ${deadlineBorder}`}
                 />
               </FieldGroup>
               <FieldGroup label="Priority" htmlFor={`goal-priority-${i}`}>
@@ -122,7 +144,8 @@ export default function GoalsStep({ data, wizardState, onChange, onNext, onBack,
                 />
               </FieldGroup>
             </div>
-          )}
+            );
+          }}
         />
       </div>
     </StepShell>

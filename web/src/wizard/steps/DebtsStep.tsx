@@ -4,6 +4,7 @@ import FieldGroup from "../components/FieldGroup";
 import CurrencyInput from "../components/CurrencyInput";
 import SelectField from "../components/SelectField";
 import DynamicList from "../components/DynamicList";
+import { validateNumber } from "../lib/validation";
 
 interface DebtsStepProps {
   data: DebtItem[];
@@ -32,12 +33,25 @@ function createDebt(): DebtItem {
   };
 }
 
+function debtErrors(item: DebtItem) {
+  return {
+    balance: validateNumber(item.balance, { min: 0, max: 10_000_000, label: "Balance" }),
+    rate: validateNumber(item.interest_rate, { min: 0, max: 100, label: "Interest rate" }),
+    min: validateNumber(item.minimum_payment_monthly, { min: 0, max: 1_000_000, label: "Minimum payment" }),
+  };
+}
+
 export default function DebtsStep({ data, onChange, onNext, onBack, onSkip }: DebtsStepProps) {
   const updateItem = (index: number, updates: Partial<DebtItem>) => {
     const next = [...data];
     next[index] = { ...next[index], ...updates };
     onChange(next);
   };
+
+  const canProceed = data.every((item) => {
+    const e = debtErrors(item);
+    return !e.balance && !e.rate && !e.min;
+  });
 
   return (
     <StepShell
@@ -46,6 +60,7 @@ export default function DebtsStep({ data, onChange, onNext, onBack, onSkip }: De
       onNext={onNext}
       onBack={onBack}
       onSkip={onSkip}
+      canProceed={canProceed}
     >
       <DynamicList
         items={data}
@@ -54,7 +69,12 @@ export default function DebtsStep({ data, onChange, onNext, onBack, onSkip }: De
         addLabel="Add a debt"
         emptyMessage="No debts added. Click below to add one, or skip this step."
         itemLabel={(item) => item.name || "Unnamed debt"}
-        renderItem={(item, i) => (
+        renderItem={(item, i) => {
+          const errors = debtErrors(item);
+          const rateBorder = errors.rate
+            ? "border-red-500 dark:border-red-500 focus:ring-red-500"
+            : "border-gray-300 dark:border-gray-700 focus:ring-gray-900 dark:focus:ring-gray-100";
+          return (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pr-8">
             <FieldGroup label="Name" htmlFor={`debt-name-${i}`}>
               <input
@@ -74,15 +94,16 @@ export default function DebtsStep({ data, onChange, onNext, onBack, onSkip }: De
                 options={DEBT_TYPES}
               />
             </FieldGroup>
-            <FieldGroup label="Balance" htmlFor={`debt-bal-${i}`}>
+            <FieldGroup label="Balance" htmlFor={`debt-bal-${i}`} error={errors.balance}>
               <CurrencyInput
                 id={`debt-bal-${i}`}
                 value={item.balance || null}
                 onChange={(v) => updateItem(i, { balance: v })}
                 min={0}
+                error={errors.balance}
               />
             </FieldGroup>
-            <FieldGroup label="Interest rate (%)" htmlFor={`debt-rate-${i}`} helpText="Annual rate, e.g. 19.9">
+            <FieldGroup label="Interest rate (%)" htmlFor={`debt-rate-${i}`} error={errors.rate} helpText={errors.rate ? undefined : "Annual rate, e.g. 19.9"}>
               <input
                 id={`debt-rate-${i}`}
                 type="number"
@@ -93,19 +114,23 @@ export default function DebtsStep({ data, onChange, onNext, onBack, onSkip }: De
                 max={100}
                 step={0.1}
                 placeholder="e.g. 19.9"
-                className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-100 focus:border-transparent"
+                aria-invalid={!!errors.rate}
+                aria-describedby={errors.rate ? `debt-rate-${i}-error` : undefined}
+                className={`w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:border-transparent ${rateBorder}`}
               />
             </FieldGroup>
-            <FieldGroup label="Minimum payment" htmlFor={`debt-min-${i}`} helpText="Monthly minimum">
+            <FieldGroup label="Minimum payment" htmlFor={`debt-min-${i}`} error={errors.min} helpText={errors.min ? undefined : "Monthly minimum"}>
               <CurrencyInput
                 id={`debt-min-${i}`}
                 value={item.minimum_payment_monthly || null}
                 onChange={(v) => updateItem(i, { minimum_payment_monthly: v })}
                 min={0}
+                error={errors.min}
               />
             </FieldGroup>
           </div>
-        )}
+          );
+        }}
       />
     </StepShell>
   );
