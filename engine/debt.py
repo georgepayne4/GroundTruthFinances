@@ -157,7 +157,19 @@ def _build_credit_card_tracking(
         name = c.get("name", "Unnamed card")
         limit = c.get("credit_limit", 0) or 0
         current = c.get("current_balance", c.get("balance", 0)) or 0
-        statement = c.get("statement_balance", current) or 0
+        # Absent statement_balance means no bill has been issued yet — default to 0
+        # rather than `current`, which would assume all current spend is already
+        # on-statement (and therefore accruing interest). The prior fallback
+        # overstated credit-card cost for PiF cards mid-cycle.
+        if "statement_balance" in c and c.get("statement_balance") is not None:
+            statement = c["statement_balance"] or 0
+        else:
+            statement = 0
+            logger.warning(
+                "Credit card '%s' missing statement_balance — defaulting to 0 "
+                "(unbilled spend). Add statement_balance to profile for accurate tracking.",
+                name,
+            )
         spend = c.get("monthly_spend", 0) or 0
         utilisation = (current / limit) if limit > 0 else 0.0
 

@@ -64,6 +64,8 @@ stamp_duty:
     - { threshold: 925000, rate: 0.05 }
     - { threshold: 1500000, rate: 0.10 }
     - { threshold: 99999999, rate: 0.12 }
+  additional_property_surcharge: 0.05  # Source: HMRC — 5% surcharge on second homes/BTL from 31 Oct 2024 (was 3%)
+  non_resident_surcharge: 0.02         # Source: HMRC — 2% surcharge for non-UK residents from 1 Apr 2021
 
 ltv_rate_tiers:
   # Source: Moneyfacts UK mortgage market data, indicative spreads Q1 2025
@@ -256,6 +258,65 @@ pension_annual_allowance:
 fee_comparison:
   low_cost_total_pct: 0.0015           # Source: Vanguard/iShares index fund TER range
   high_cost_total_pct: 0.015           # Source: Typical actively managed fund + platform fee
+
+# Risk profile portfolio metadata (single source of truth — moved from engine/investments.py MODEL_PORTFOLIOS in v9.4.2)
+# Expected returns are in `investment_returns` above and are not duplicated here.
+risk_profiles:
+  conservative:
+    allocation:                        # Source: Vanguard LifeStrategy 20% equity indicative mix
+      government_bonds: 40
+      corporate_bonds: 20
+      uk_equity: 15
+      global_equity: 10
+      property_funds: 5
+      cash: 10
+    historical_volatility: 0.06        # Source: 20yr std dev of Vanguard LifeStrategy 20% equity
+    max_drawdown: -0.15                # Source: 2008 peak-to-trough
+    worst_year: -0.10                  # Source: Calendar-year worst
+    negative_year_probability: 0.12    # Source: Historical frequency
+  moderate:
+    allocation:                        # Source: Vanguard LifeStrategy 60% equity indicative mix
+      government_bonds: 15
+      corporate_bonds: 15
+      uk_equity: 25
+      global_equity: 25
+      property_funds: 10
+      cash: 10
+    historical_volatility: 0.10
+    max_drawdown: -0.25
+    worst_year: -0.18
+    negative_year_probability: 0.20
+  aggressive:
+    allocation:                        # Source: Vanguard LifeStrategy 80% equity indicative mix
+      government_bonds: 5
+      corporate_bonds: 5
+      uk_equity: 30
+      global_equity: 40
+      property_funds: 10
+      cash: 10
+    historical_volatility: 0.15
+    max_drawdown: -0.35
+    worst_year: -0.25
+    negative_year_probability: 0.25
+  very_aggressive:
+    allocation:                        # Source: MSCI World indicative all-equity mix with EM tilt
+      government_bonds: 0
+      corporate_bonds: 0
+      uk_equity: 30
+      global_equity: 45
+      emerging_markets: 10
+      property_funds: 10
+      cash: 5
+    historical_volatility: 0.20
+    max_drawdown: -0.45
+    worst_year: -0.35
+    negative_year_probability: 0.30
+
+# Defaults for investment analysis magic numbers (moved from engine/investments.py in v9.4.2)
+investment_analysis_defaults:
+  dividend_yield: 0.02                 # Source: FTSE All-Share historical average yield
+  rebalancing_drift_threshold_pct: 5.0 # Source: Vanguard/industry 5/25 rebalancing rule
+  goal_monte_carlo_sim_cap: 500        # Source: Internal — per-goal sims capped for perf
 
 mortgage_costs:
   # Source: HomeOwners Alliance / Money Saving Expert typical costs 2025

@@ -37,71 +37,14 @@ logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Model portfolios by risk profile (IA-8: with risk metrics)
+#
+# Portfolio metadata (allocation, volatility, drawdown, worst_year,
+# negative_year_probability) lives in config/assumptions.yaml under
+# `risk_profiles`. Expected return lives in `investment_returns`.
+# Moved out of code in v9.4.2 — see CLAUDE.md "zero-duplication on constants".
 # ---------------------------------------------------------------------------
 
-MODEL_PORTFOLIOS = {
-    "conservative": {
-        "allocation": {
-            "government_bonds": 40,
-            "corporate_bonds": 20,
-            "uk_equity": 15,
-            "global_equity": 10,
-            "property_funds": 5,
-            "cash": 10,
-        },
-        "expected_return": 0.04,
-        "historical_volatility": 0.06,
-        "max_drawdown": -0.15,
-        "worst_year": -0.10,
-        "negative_year_probability": 0.12,
-    },
-    "moderate": {
-        "allocation": {
-            "government_bonds": 15,
-            "corporate_bonds": 15,
-            "uk_equity": 25,
-            "global_equity": 25,
-            "property_funds": 10,
-            "cash": 10,
-        },
-        "expected_return": 0.06,
-        "historical_volatility": 0.10,
-        "max_drawdown": -0.25,
-        "worst_year": -0.18,
-        "negative_year_probability": 0.20,
-    },
-    "aggressive": {
-        "allocation": {
-            "government_bonds": 5,
-            "corporate_bonds": 5,
-            "uk_equity": 30,
-            "global_equity": 40,
-            "property_funds": 10,
-            "cash": 10,
-        },
-        "expected_return": 0.08,
-        "historical_volatility": 0.15,
-        "max_drawdown": -0.35,
-        "worst_year": -0.25,
-        "negative_year_probability": 0.25,
-    },
-    "very_aggressive": {
-        "allocation": {
-            "government_bonds": 0,
-            "corporate_bonds": 0,
-            "uk_equity": 30,
-            "global_equity": 45,
-            "emerging_markets": 10,
-            "property_funds": 10,
-            "cash": 5,
-        },
-        "expected_return": 0.10,
-        "historical_volatility": 0.20,
-        "max_drawdown": -0.45,
-        "worst_year": -0.35,
-        "negative_year_probability": 0.30,
-    },
-}
+_DEFAULT_RISK_PROFILE = "moderate"
 
 
 def analyse_investments(
@@ -116,12 +59,14 @@ def analyse_investments(
     inc = profile.get("income", {})
     surplus = cashflow.get("surplus", {}).get("monthly", 0)
 
-    risk_profile = personal.get("risk_profile", "moderate").lower()
-    if risk_profile not in MODEL_PORTFOLIOS:
-        risk_profile = "moderate"
-
+    risk_profiles_cfg = assumptions.get("risk_profiles", {})
     returns_cfg = assumptions.get("investment_returns", {})
-    expected_return = returns_cfg.get(risk_profile, 0.06)
+
+    risk_profile = personal.get("risk_profile", _DEFAULT_RISK_PROFILE).lower()
+    if risk_profile not in risk_profiles_cfg:
+        risk_profile = _DEFAULT_RISK_PROFILE
+
+    expected_return = returns_cfg.get(risk_profile, returns_cfg.get(_DEFAULT_RISK_PROFILE, 0.06))
     inflation = assumptions.get("inflation", {}).get("general", 0.03)
     real_return = expected_return - inflation
     tax_cfg = assumptions.get("tax", {})
@@ -151,9 +96,11 @@ def analyse_investments(
     # ------------------------------------------------------------------
     # 2. Model portfolio & risk metrics (IA-8)
     # ------------------------------------------------------------------
-    model = MODEL_PORTFOLIOS[risk_profile]
+    model = dict(risk_profiles_cfg[risk_profile])
+    # Stitch expected_return from investment_returns so downstream consumers see a unified dict.
+    model["expected_return"] = expected_return
     risk_metrics = {
-        "expected_return_pct": round(model["expected_return"] * 100, 1),
+        "expected_return_pct": round(expected_return * 100, 1),
         "historical_volatility_pct": round(model["historical_volatility"] * 100, 1),
         "max_drawdown_pct": round(model["max_drawdown"] * 100, 1),
         "worst_year_pct": round(model["worst_year"] * 100, 1),
@@ -170,9 +117,11 @@ def analyse_investments(
     # 3. Fee impact modelling (IA-1)
     # ------------------------------------------------------------------
     fees_cfg = sav.get("investment_fees", {})
+    fee_comparison_cfg = assumptions.get("fee_comparison", {})
+    inv_defaults = assumptions.get("investment_analysis_defaults", {})
     fee_analysis = _fee_impact_analysis(
         isa, pension, fees_cfg, expected_return, years_to_retirement,
-        monthly_pension_contribution, surplus,
+        monthly_pension_contribution, surplus, fee_comparison_cfg,
     )
 
     # Net return after fees
@@ -391,16 +340,17 @@ def analyse_investments(
     # 14. T3-3: Rebalancing drift detection
     # ------------------------------------------------------------------
     current_alloc = sav.get("current_allocation", {})
-    rebalancing = _rebalancing_analysis(current_alloc, model, total_invested)
+    rebalancing = _rebalancing_analysis(current_alloc, model, total_invested, inv_defaults)
 
     # ------------------------------------------------------------------
     # 15. T2-2: Tax efficiency analysis (CGT, dividends, ISA vs GIA)
     # ------------------------------------------------------------------
     cgt_cfg = assumptions.get("capital_gains_tax", {})
     div_cfg = assumptions.get("dividend_tax", {})
+    isa_cfg_for_tax = assumptions.get("isa", {})
     tax_efficiency = _tax_efficiency_analysis(
         sav, primary_gross, expected_return, cgt_cfg, div_cfg, tax_cfg,
-        years_to_retirement,
+        years_to_retirement, inv_defaults, isa_cfg_for_tax,
     )
 
     # ------------------------------------------------------------------
@@ -540,6 +490,7 @@ def analyse_investments(
 
             goal_mc = _run_goal_monte_carlo(
                 goal_rp["goal_risk_profiles"], mc_cfg, inflation, returns_cfg,
+                risk_profiles_cfg, inv_defaults,
             )
             for gmc in goal_mc:
                 for gp in goal_rp["goal_risk_profiles"]:
@@ -559,14 +510,17 @@ def analyse_investments(
 
 def _run_goal_monte_carlo(
     goal_profiles: list[dict], mc_cfg: dict, inflation: float,
-    returns_cfg: dict,
+    returns_cfg: dict, risk_profiles_cfg: dict, inv_defaults: dict,
 ) -> list[dict]:
     """Run Monte Carlo simulations per goal using goal-specific risk profiles."""
     from engine.monte_carlo import probability_of_meeting_target, run_simulation
 
     results = []
     mc_seed = mc_cfg.get("random_seed")
-    mc_sims = min(mc_cfg.get("num_simulations", 1000), 500)
+    sim_cap = inv_defaults.get("goal_monte_carlo_sim_cap", 500)
+    mc_sims = min(mc_cfg.get("num_simulations", 1000), sim_cap)
+
+    fallback_profile = risk_profiles_cfg.get("conservative", {})
 
     for gp in goal_profiles:
         deadline = gp.get("deadline_years", 0)
@@ -574,9 +528,9 @@ def _run_goal_monte_carlo(
             continue
 
         effective = gp.get("effective_profile", "conservative")
-        model = MODEL_PORTFOLIOS.get(effective, MODEL_PORTFOLIOS["conservative"])
-        goal_return = returns_cfg.get(effective, model["expected_return"])
-        goal_vol = model["historical_volatility"]
+        model = risk_profiles_cfg.get(effective, fallback_profile)
+        goal_return = returns_cfg.get(effective, returns_cfg.get("conservative", 0.04))
+        goal_vol = model.get("historical_volatility", 0.06)
 
         need = gp.get("need_for_return", {})
         target = need.get("target_real", 0)
@@ -618,6 +572,7 @@ def _fee_impact_analysis(
     isa: float, pension: float, fees_cfg: dict,
     expected_return: float, years: int,
     monthly_pension: float, surplus: float,
+    fee_comparison_cfg: dict,
 ) -> dict:
     """Model the impact of investment fees over time."""
     isa_total_fee = fees_cfg.get("isa_platform_fee", 0) + fees_cfg.get("isa_fund_ocf", 0)
@@ -634,14 +589,14 @@ def _fee_impact_analysis(
 
     total_fee_drag = isa_fee_drag + pension_fee_drag
 
-    # Low-cost comparison
-    low_cost_fee = 0.0015
+    # Fee benchmarks sourced from fee_comparison section of assumptions.
+    low_cost_fee = fee_comparison_cfg.get("low_cost_total_pct", 0.0015)
+    high_cost_fee = fee_comparison_cfg.get("high_cost_total_pct", 0.015)
+
     low_cost_isa = _future_value(isa, 0, expected_return - low_cost_fee, years)
     low_cost_pension = _future_value(pension, monthly_pension, expected_return - low_cost_fee, years)
     low_cost_total = low_cost_isa + low_cost_pension
 
-    # High-cost comparison
-    high_cost_fee = 0.015
     high_cost_isa = _future_value(isa, 0, expected_return - high_cost_fee, years)
     high_cost_pension = _future_value(pension, monthly_pension, expected_return - high_cost_fee, years)
     high_cost_total = high_cost_isa + high_cost_pension
@@ -735,7 +690,7 @@ def _time_horizon_allocation(sav: dict, profile: dict, years_to_retirement: int)
 def _retirement_withdrawal_strategy(
     pension_real: float, isa_balance: float,
     state_pension: float, tax_cfg: dict,
-    target_income: float = 30000,
+    target_income: float,
 ) -> dict:
     """Model optimal vs naive withdrawal ordering in retirement."""
     tax_cfg.get("personal_allowance", 12570)
@@ -912,13 +867,14 @@ def _isa_contribution_tracking(sav: dict, isa_cfg: dict | None = None, lisa_cfg:
 
 def _rebalancing_analysis(
     current_alloc: dict, model: dict, total_invested: float,
+    inv_defaults: dict | None = None,
 ) -> dict | None:
     """Detect portfolio drift and calculate rebalancing trades."""
     if not current_alloc or total_invested <= 0:
         return None
 
     target_alloc = model.get("allocation", {})
-    drift_threshold = 5.0  # percentage points
+    drift_threshold = (inv_defaults or {}).get("rebalancing_drift_threshold_pct", 5.0)
 
     # Normalize current allocation (could be pcts or decimals)
     current_sum = sum(current_alloc.values())
@@ -999,7 +955,8 @@ def _rebalancing_analysis(
 def _tax_efficiency_analysis(
     sav: dict, gross_income: float, expected_return: float,
     cgt_cfg: dict, div_cfg: dict, tax_cfg: dict,
-    years: int,
+    years: int, inv_defaults: dict | None = None,
+    isa_cfg: dict | None = None,
 ) -> dict | None:
     """Compare tax drag on GIA vs ISA/pension wrappers."""
     gia_balance = sav.get("gia_balance", sav.get("other_investments", 0))
@@ -1009,7 +966,7 @@ def _tax_efficiency_analysis(
         return None
 
     # Estimate annual dividends and gains on GIA holdings
-    dividend_yield = 0.02  # typical UK equity yield
+    dividend_yield = (inv_defaults or {}).get("dividend_yield", 0.02)
     annual_dividends = gia_balance * dividend_yield
     annual_growth = gia_balance * (expected_return - dividend_yield)
 
@@ -1023,7 +980,7 @@ def _tax_efficiency_analysis(
     annual_tax_drag = div_tax["tax"] + cgt["tax"]
 
     # What if moved to ISA?
-    isa_limit = 20000
+    isa_limit = (isa_cfg or {}).get("annual_limit", 20000)
     transferable = min(gia_balance, isa_limit)
     annual_saving_if_isa = transferable / gia_balance * annual_tax_drag if gia_balance > 0 else 0
 

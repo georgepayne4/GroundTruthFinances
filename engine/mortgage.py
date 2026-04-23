@@ -144,7 +144,13 @@ def analyse_mortgage(
     # 5. Acquisition costs
     # ------------------------------------------------------------------
     first_time_buyer = not profile.get("_owns_property", False)
-    sdlt = _calculate_stamp_duty(target_value, first_time_buyer, assumptions, mort_costs)
+    mort_profile = profile.get("mortgage", {})
+    additional_property = bool(mort_profile.get("additional_property", False))
+    non_resident = bool(mort_profile.get("non_resident", False))
+    sdlt = _calculate_stamp_duty(
+        target_value, first_time_buyer, assumptions, mort_costs,
+        additional_property=additional_property, non_resident=non_resident,
+    )
     acquisition_costs = _estimate_acquisition_costs(target_value, mortgage_amount, sdlt, mort_costs)
 
     # ------------------------------------------------------------------
@@ -638,14 +644,24 @@ def _analyse_ltv_bands(
 # Stamp Duty Land Tax (SDLT)
 # ---------------------------------------------------------------------------
 
-def _calculate_stamp_duty(property_value: float, first_time_buyer: bool, assumptions: dict, mort_costs: dict | None = None) -> dict:
-    """Calculate UK Stamp Duty Land Tax."""
+def _calculate_stamp_duty(
+    property_value: float, first_time_buyer: bool, assumptions: dict,
+    mort_costs: dict | None = None,
+    additional_property: bool = False, non_resident: bool = False,
+) -> dict:
+    """Calculate UK Stamp Duty Land Tax.
+
+    Supports first-time-buyer relief, additional-property surcharge (second homes/BTL),
+    and non-resident surcharge. FTB relief does not apply when buying an additional
+    property — the audit's C6 case is a FTB purchasing a second home (rare but modelled).
+    """
     if mort_costs is None:
         mort_costs = {}
     sdlt_cfg = assumptions.get("stamp_duty", {})
     ftb_threshold = mort_costs.get("first_time_buyer_threshold", 625000)
 
-    if first_time_buyer and property_value <= ftb_threshold:
+    ftb_eligible = first_time_buyer and not additional_property
+    if ftb_eligible and property_value <= ftb_threshold:
         bands = sdlt_cfg.get("first_time_buyer", [
             {"threshold": 425000, "rate": 0.00},
             {"threshold": 625000, "rate": 0.05},
@@ -684,10 +700,40 @@ def _calculate_stamp_duty(property_value: float, first_time_buyer: bool, assumpt
         if property_value <= band_threshold:
             break
 
+    base_tax = tax
+    additional_surcharge_rate = sdlt_cfg.get("additional_property_surcharge", 0.05)
+    non_resident_surcharge_rate = sdlt_cfg.get("non_resident_surcharge", 0.02)
+
+    additional_surcharge = property_value * additional_surcharge_rate if additional_property else 0.0
+    non_resident_surcharge = property_value * non_resident_surcharge_rate if non_resident else 0.0
+
+    if additional_surcharge:
+        tax += additional_surcharge
+        breakdown.append({
+            "band": "Additional-property surcharge",
+            "rate_pct": round(additional_surcharge_rate * 100, 1),
+            "taxable_amount": round(property_value, 2),
+            "tax": round(additional_surcharge, 2),
+        })
+        buyer_type = "additional_property"
+
+    if non_resident_surcharge:
+        tax += non_resident_surcharge
+        breakdown.append({
+            "band": "Non-resident surcharge",
+            "rate_pct": round(non_resident_surcharge_rate * 100, 1),
+            "taxable_amount": round(property_value, 2),
+            "tax": round(non_resident_surcharge, 2),
+        })
+        buyer_type = "non_resident" if buyer_type == "standard" else f"{buyer_type}+non_resident"
+
     return {
         "buyer_type": buyer_type,
         "property_value": round(property_value, 2),
         "total_stamp_duty": round(tax, 2),
+        "base_stamp_duty": round(base_tax, 2),
+        "additional_property_surcharge": round(additional_surcharge, 2),
+        "non_resident_surcharge": round(non_resident_surcharge, 2),
         "effective_rate_pct": round(tax / property_value * 100, 2) if property_value > 0 else 0,
         "breakdown": breakdown,
     }

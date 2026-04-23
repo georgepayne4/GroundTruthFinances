@@ -57,6 +57,7 @@ def project_lifetime_cashflow(
     # Retirement config
     retire_cfg = assumptions.get("retirement", {})
     pcls_fraction = retire_cfg.get("tax_free_lump_sum_fraction", 0.25)
+    isa_annual_limit = assumptions.get("isa", {}).get("annual_limit", 20000)
 
     # State pension
     sp_cfg = assumptions.get("state_pension", {})
@@ -148,7 +149,7 @@ def project_lifetime_cashflow(
             year_expenses = expenses_annual + debt_payments + mortgage_payment_annual
             surplus = net_income - year_expenses
             if surplus > 0:
-                isa_contrib = min(surplus * 0.3, 20000)  # 30% of surplus to ISA, capped at allowance
+                isa_contrib = min(surplus * 0.3, isa_annual_limit)  # 30% of surplus to ISA, capped at allowance
                 isa_bal += isa_contrib
                 liquid += surplus - isa_contrib
             else:

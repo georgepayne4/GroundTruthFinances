@@ -69,6 +69,8 @@ class StampDutyBand(BaseModel):
 class StampDutyConfig(BaseModel):
     first_time_buyer: list[StampDutyBand]
     standard: list[StampDutyBand]
+    additional_property_surcharge: float = Field(default=0.05, ge=0.0, le=0.20)
+    non_resident_surcharge: float = Field(default=0.02, ge=0.0, le=0.10)
 
 
 class LtvTier(BaseModel):
@@ -291,6 +293,47 @@ class FeeComparisonConfig(BaseModel):
     high_cost_total_pct: float = Field(ge=0.0, le=0.10)
 
 
+class RiskProfileAllocation(BaseModel):
+    government_bonds: int = Field(default=0, ge=0, le=100)
+    corporate_bonds: int = Field(default=0, ge=0, le=100)
+    uk_equity: int = Field(default=0, ge=0, le=100)
+    global_equity: int = Field(default=0, ge=0, le=100)
+    emerging_markets: int = Field(default=0, ge=0, le=100)
+    property_funds: int = Field(default=0, ge=0, le=100)
+    cash: int = Field(default=0, ge=0, le=100)
+
+    @model_validator(mode="after")
+    def allocation_sums_to_100(self) -> RiskProfileAllocation:
+        total = (
+            self.government_bonds + self.corporate_bonds + self.uk_equity
+            + self.global_equity + self.emerging_markets + self.property_funds + self.cash
+        )
+        if total != 100:
+            raise ValueError(f"Risk profile allocation must sum to 100, got {total}")
+        return self
+
+
+class RiskProfileConfig(BaseModel):
+    allocation: RiskProfileAllocation
+    historical_volatility: float = Field(ge=0.0, le=0.50)
+    max_drawdown: float = Field(le=0.0, ge=-1.0)
+    worst_year: float = Field(le=0.0, ge=-1.0)
+    negative_year_probability: float = Field(ge=0.0, le=1.0)
+
+
+class RiskProfilesConfig(BaseModel):
+    conservative: RiskProfileConfig
+    moderate: RiskProfileConfig
+    aggressive: RiskProfileConfig
+    very_aggressive: RiskProfileConfig
+
+
+class InvestmentAnalysisDefaultsConfig(BaseModel):
+    dividend_yield: float = Field(default=0.02, ge=0.0, le=0.20)
+    rebalancing_drift_threshold_pct: float = Field(default=5.0, ge=0.0, le=100.0)
+    goal_monte_carlo_sim_cap: int = Field(default=500, ge=100, le=10000)
+
+
 class MortgageCostsConfig(BaseModel):
     solicitor: int = Field(ge=0)
     survey: int = Field(ge=0)
@@ -454,6 +497,8 @@ class AssumptionsSchema(BaseModel):
     retirement: RetirementConfig
     pension_annual_allowance: PensionAnnualAllowanceConfig
     fee_comparison: FeeComparisonConfig
+    risk_profiles: RiskProfilesConfig
+    investment_analysis_defaults: InvestmentAnalysisDefaultsConfig
     mortgage_costs: MortgageCostsConfig
     scenarios: ScenariosConfig
     self_employment: SelfEmploymentConfig
