@@ -98,6 +98,18 @@ class UpdateResult:
 # Fetchers
 # ---------------------------------------------------------------------------
 
+# BoE and ONS started returning 403 to default httpx User-Agent in 2026.
+# A realistic browser UA gets through; we re-evaluate periodically.
+_FETCH_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Accept": "*/*",
+}
+
+
 def fetch_boe_base_rate() -> dict[str, Any]:
     """Fetch the current Bank of England base rate.
 
@@ -118,7 +130,7 @@ def fetch_boe_base_rate() -> dict[str, Any]:
     }
 
     try:
-        resp = httpx.get(url, params=params, timeout=15, follow_redirects=True)
+        resp = httpx.get(url, params=params, timeout=15, follow_redirects=True, headers=_FETCH_HEADERS)
         resp.raise_for_status()
     except httpx.HTTPError as e:
         raise FetchError(f"BoE base rate fetch failed: {e}") from e
@@ -155,7 +167,7 @@ def fetch_ons_cpi() -> dict[str, Any]:
     url = "https://www.ons.gov.uk/economy/inflationandpriceindices/timeseries/d7g7/mm23/data"
 
     try:
-        resp = httpx.get(url, timeout=15, follow_redirects=True)
+        resp = httpx.get(url, timeout=15, follow_redirects=True, headers=_FETCH_HEADERS)
         resp.raise_for_status()
         data = resp.json()
     except httpx.HTTPError as e:

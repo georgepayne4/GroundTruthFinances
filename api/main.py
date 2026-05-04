@@ -19,21 +19,30 @@ import logging
 import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
+from pathlib import Path as _Path
 from typing import Any
 
-import yaml
-from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Response
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
-from sqlalchemy.orm import Session
+from dotenv import load_dotenv
 
-from api.banking.router import router as banking_router
-from api.cashflow_actual import router as cashflow_actual_router
-from api.comparison import router as comparison_router
-from api.database import crud
-from api.database.models import User
-from api.database.session import get_db, init_db
-from api.dependencies import (
+# Load .env at import time, before any module reads CLERK_SECRET_KEY etc.
+# `override=False` keeps real OS env vars (CI, prod) authoritative over the file.
+load_dotenv(_Path(__file__).resolve().parent.parent / ".env", override=False)
+
+# Imports below intentionally trail `load_dotenv()` so downstream modules
+# see the loaded env vars at their own import time.
+import yaml  # noqa: E402
+from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Response  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.responses import JSONResponse, StreamingResponse  # noqa: E402
+from sqlalchemy.orm import Session  # noqa: E402
+
+from api.banking.router import router as banking_router  # noqa: E402
+from api.cashflow_actual import router as cashflow_actual_router  # noqa: E402
+from api.comparison import router as comparison_router  # noqa: E402
+from api.database import crud  # noqa: E402
+from api.database.models import User  # noqa: E402
+from api.database.session import get_db, init_db  # noqa: E402
+from api.dependencies import (  # noqa: E402
     authenticate,
     generate_api_key,
     get_current_user,
@@ -42,7 +51,7 @@ from api.dependencies import (
     require_admin,
     verify_api_key,
 )
-from api.models import (
+from api.models import (  # noqa: E402
     AnalyseRequest,
     AnalyseResponse,
     ErrorResponse,
@@ -54,9 +63,9 @@ from api.models import (
     ValidateResponse,
     ValidationFlag,
 )
-from api.notifications.router import router as notifications_router
-from api.websocket import router as ws_router
-from api.whatif import router as whatif_router
+from api.notifications.router import router as notifications_router  # noqa: E402
+from api.websocket import router as ws_router  # noqa: E402
+from api.whatif import router as whatif_router  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -89,12 +98,20 @@ def _check_rate_limit(key: str) -> bool:
 async def lifespan(app: FastAPI):
     """Create database tables on startup and check assumptions freshness."""
     init_db()
-    _try_auto_update_assumptions()
+    _check_assumptions_freshness()
     yield
 
 
-def _try_auto_update_assumptions() -> None:
-    """If assumptions are stale, attempt an auto-update before first analysis."""
+def _check_assumptions_freshness() -> None:
+    """Warn if assumptions are stale. Auto-write to YAML is disabled.
+
+    The previous startup auto-updater rewrote `config/assumptions.yaml` via
+    `yaml.dump`, which strips every source/provenance comment. Until the writer
+    is rebuilt on `ruamel.yaml` (round-trip preserving), startup must never
+    overwrite the file. Set `GROUNDTRUTH_ENABLE_AUTO_UPDATE=1` to opt in for
+    local experiments — production should leave it off.
+    """
+    import os
     from datetime import date
 
     from engine.loader import load_assumptions
@@ -108,17 +125,30 @@ def _try_auto_update_assumptions() -> None:
         if date.today() <= end_date:
             return
 
-        logger.warning("Assumptions stale (effective_to=%s), attempting auto-update", effective_to)
-        from engine.assumption_updater import run_update
+        logger.warning(
+            "Assumptions stale (effective_to=%s) — refresh config/assumptions.yaml manually. "
+            "Startup auto-write is disabled to preserve source comments.",
+            effective_to,
+        )
+
+        if os.environ.get("GROUNDTRUTH_ENABLE_AUTO_UPDATE") != "1":
+            return
+
+        # Opt-in path retained for local debugging. Will still strip comments
+        # until the writer is migrated to ruamel.yaml.
+        from engine.assumption_updater import run_update, save_assumptions_yaml
         result = run_update(assumptions)
         if result.changes:
-            from engine.assumption_updater import save_assumptions_yaml
             save_assumptions_yaml(assumptions, str(get_default_assumptions_path()))
-            logger.info("Auto-updated %d assumption(s) on startup", len(result.changes))
+            logger.warning(
+                "Auto-update wrote %d change(s) — source comments WILL be lost. "
+                "Review git diff before committing.",
+                len(result.changes),
+            )
         if result.errors:
             logger.warning("Auto-update partial failure: %s", result.errors)
     except Exception:
-        logger.warning("Assumptions auto-update check failed (non-fatal)", exc_info=True)
+        logger.warning("Assumptions freshness check failed (non-fatal)", exc_info=True)
 
 
 app = FastAPI(

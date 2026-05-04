@@ -16,14 +16,26 @@ import MortgageStep from "./steps/MortgageStep";
 import LifeEventsStep from "./steps/LifeEventsStep";
 import ReviewStep from "./steps/ReviewStep";
 
+const REVIEW_STEP = 8;
+
 function WizardInner() {
   const wizard = useWizard();
   const { analyse, setProfileJson, loading, error } = useReport();
   const navigate = useNavigate();
   const [expenseDefaultsApplied, setExpenseDefaultsApplied] = useState(false);
+  // True when the user opened a step via the Review/Summary edit action.
+  // While set, Next and Back both return straight to the summary instead of
+  // walking through subsequent steps — so a typo fix is one click, not seven.
+  const [editingFromSummary, setEditingFromSummary] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const scrollToTop = () => scrollRef.current?.scrollIntoView({ behavior: "smooth" });
+
+  const returnToSummary = useCallback(() => {
+    setEditingFromSummary(false);
+    wizard.setCurrentStep(REVIEW_STEP);
+    scrollToTop();
+  }, [wizard]);
 
   const goNext = useCallback(() => {
     // Apply expense defaults when moving from Income (1) to Expenses (2)
@@ -43,19 +55,32 @@ function WizardInner() {
           : 0,
       });
     }
+    if (editingFromSummary) {
+      returnToSummary();
+      return;
+    }
     wizard.setCurrentStep(wizard.currentStep + 1);
     scrollToTop();
-  }, [wizard, expenseDefaultsApplied]);
+  }, [wizard, expenseDefaultsApplied, editingFromSummary, returnToSummary]);
 
   const goBack = useCallback(() => {
+    if (editingFromSummary) {
+      returnToSummary();
+      return;
+    }
     wizard.setCurrentStep(wizard.currentStep - 1);
     scrollToTop();
-  }, [wizard]);
+  }, [wizard, editingFromSummary, returnToSummary]);
 
   const goTo = useCallback((step: number) => {
     wizard.setCurrentStep(step);
     scrollToTop();
   }, [wizard]);
+
+  const editFromSummary = useCallback((step: number) => {
+    setEditingFromSummary(true);
+    goTo(step);
+  }, [goTo]);
 
   const handleSubmit = useCallback(async () => {
     const profile = buildProfile(wizard.state);
@@ -105,6 +130,21 @@ function WizardInner() {
         visitedSteps={wizard.visitedSteps}
       />
 
+      {editingFromSummary && wizard.currentStep !== REVIEW_STEP && (
+        <div className="mb-4 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 px-4 py-3 flex items-center justify-between">
+          <span className="text-sm text-amber-800 dark:text-amber-200">
+            Editing from summary — Next or Back will return you to the summary.
+          </span>
+          <button
+            type="button"
+            onClick={returnToSummary}
+            className="rounded-lg bg-amber-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-amber-700 transition-colors"
+          >
+            Back to summary
+          </button>
+        </div>
+      )}
+
       {wizard.currentStep === 0 && (
         <PersonalStep data={wizard.state.personal} onChange={wizard.updatePersonal} onNext={goNext} />
       )}
@@ -129,8 +169,8 @@ function WizardInner() {
       {wizard.currentStep === 7 && (
         <LifeEventsStep data={wizard.state.lifeEvents} onChange={wizard.setLifeEvents} onNext={goNext} onBack={goBack} onSkip={goNext} />
       )}
-      {wizard.currentStep === 8 && (
-        <ReviewStep state={wizard.state} onEdit={goTo} onSubmit={handleSubmit} loading={loading} error={error} />
+      {wizard.currentStep === REVIEW_STEP && (
+        <ReviewStep state={wizard.state} onEdit={editFromSummary} onSubmit={handleSubmit} loading={loading} error={error} />
       )}
     </div>
   );

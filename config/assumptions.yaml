@@ -8,9 +8,9 @@
 schema_version: 1                      # Source: Internal — bump when adding/removing/renaming keys
 
 # T3-5: Tax year and policy metadata
-tax_year: "2025/26"                    # Source: HMRC tax year
-effective_from: "2025-04-06"
-effective_to: "2026-04-05"
+tax_year: "2026/27"                    # Source: HMRC tax year
+effective_from: "2026-04-06"
+effective_to: "2027-04-05"
 
 inflation:
   general: 0.03                        # Source: BoE 2% target + buffer; OBR forecast 2025
@@ -30,16 +30,16 @@ salary_growth:
   high: 0.05                           # Source: ONS AWE upper quartile growth
 
 tax:
-  personal_allowance: 12570            # Source: HMRC 2025/26 (frozen since 2021/22)
-  basic_rate: 0.20                     # Source: HMRC 2025/26
-  basic_threshold: 50270               # Source: HMRC 2025/26 (frozen since 2021/22)
-  higher_rate: 0.40                    # Source: HMRC 2025/26
-  higher_threshold: 125140             # Source: HMRC 2025/26
-  additional_rate: 0.45                # Source: HMRC 2025/26
-  national_insurance_rate: 0.08        # Source: HMRC 2025/26 Class 1 employee rate
-  employer_national_insurance_rate: 0.15  # Source: HMRC 2025/26 (increased from 13.8% in Autumn Budget 2024)
-  employer_ni_threshold: 5000          # Source: HMRC 2025/26 (reduced from £9,100)
-  marriage_allowance_transfer: 1260    # Source: HMRC 2025/26 (10% of PA transferable)
+  personal_allowance: 12570            # Source: HMRC 2026/27 (frozen since 2021/22)
+  basic_rate: 0.20                     # Source: HMRC 2026/27
+  basic_threshold: 50270               # Source: HMRC 2026/27 (frozen since 2021/22)
+  higher_rate: 0.40                    # Source: HMRC 2026/27
+  higher_threshold: 125140             # Source: HMRC 2026/27
+  additional_rate: 0.45                # Source: HMRC 2026/27
+  national_insurance_rate: 0.08        # Source: HMRC 2026/27 Class 1 employee rate
+  employer_national_insurance_rate: 0.15  # Source: HMRC 2026/27 (increased from 13.8% in Autumn Budget 2024)
+  employer_ni_threshold: 5000          # Source: HMRC 2026/27 (reduced from £9,100)
+  marriage_allowance_transfer: 1260    # Source: HMRC 2026/27 (10% of PA transferable)
 
 scottish_tax:
   # Source: Revenue Scotland 2025/26
@@ -56,10 +56,10 @@ scottish_tax:
   top_rate: 0.48
 
 stamp_duty:
-  first_time_buyer:                    # Source: HMRC 2025/26 (temporary relief extended)
+  first_time_buyer:                    # Source: HMRC 2026/27 (temporary relief extended)
     - { threshold: 425000, rate: 0.00 }
     - { threshold: 625000, rate: 0.05 }
-  standard:                            # Source: HMRC 2025/26
+  standard:                            # Source: HMRC 2026/27
     - { threshold: 250000, rate: 0.00 }
     - { threshold: 925000, rate: 0.05 }
     - { threshold: 1500000, rate: 0.10 }
@@ -130,7 +130,7 @@ scoring:
     mortgage_readiness: 0.10
 
 state_pension:
-  full_annual_amount: 11502            # Source: DWP 2024/25 (triple lock applied)
+  full_annual_amount: 12392            # Source: DWP 2026/27 best-estimate (£11,973 × ~3.5% triple lock per AWE May-Jul 2025) — VERIFY against gov.uk, see REVIEW.md #24
   age: 67                              # Source: DWP current SPA (rising to 68 TBC)
   qualifying_years_full: 35            # Source: GOV.UK state pension eligibility
   qualifying_years_min: 10             # Source: GOV.UK state pension eligibility
@@ -149,21 +149,21 @@ childcare:
   free_hours_hourly_rate: 6.50         # Source: DfE hourly funding rate approximation
 
 inheritance_tax:
-  nil_rate_band: 325000                # Source: HMRC 2025/26 (frozen since 2009)
-  residence_nil_rate: 175000           # Source: HMRC 2025/26
-  rate: 0.40                           # Source: HMRC 2025/26
+  nil_rate_band: 325000                # Source: HMRC 2026/27 (frozen since 2009)
+  residence_nil_rate: 175000           # Source: HMRC 2026/27
+  rate: 0.40                           # Source: HMRC 2026/27
   charitable_rate: 0.36                # Source: HMRC — 10%+ of net estate to charity reduces rate
   charitable_threshold_pct: 0.10       # Source: HMRC — minimum 10% of baseline amount
   spousal_exemption: true              # Source: HMRC — transfers between spouses are exempt
-  annual_gift_exemption: 3000          # Source: HMRC 2025/26 — per person per year
-  small_gift_limit: 250                # Source: HMRC 2025/26 — unlimited recipients
+  annual_gift_exemption: 3000          # Source: HMRC 2026/27 — per person per year
+  small_gift_limit: 250                # Source: HMRC 2026/27 — unlimited recipients
   pet_full_exemption_years: 7          # Source: HMRC — PETs fully exempt after 7 years
   taper_relief:                        # Source: HMRC — taper relief on failed PETs (years_since_gift threshold)
     - { min_years: 3, relief_pct: 0.20 }
     - { min_years: 4, relief_pct: 0.40 }
     - { min_years: 5, relief_pct: 0.60 }
     - { min_years: 6, relief_pct: 0.80 }
-  rnrb_taper_threshold: 2000000       # Source: HMRC 2025/26 — RNRB tapers above this
+  rnrb_taper_threshold: 2000000       # Source: HMRC 2026/27 — RNRB tapers above this
   rnrb_taper_rate: 0.50               # Source: HMRC — £1 RNRB lost per £2 over threshold
 
 glide_path:
@@ -233,13 +233,13 @@ debt_simulation:
   max_simulation_months: 600                # Source: 50 years max simulation
 
 lisa:
-  annual_limit: 4000                   # Source: HMRC 2025/26
+  annual_limit: 4000                   # Source: HMRC 2026/27
   bonus_rate: 0.25                     # Source: HMRC — 25% government bonus
   property_price_limit: 450000         # Source: HMRC — max property value for LISA withdrawal
   age_limit: 40                        # Source: HMRC — must open before age 40
 
 isa:
-  annual_limit: 20000                  # Source: HMRC 2025/26
+  annual_limit: 20000                  # Source: HMRC 2026/27
 
 retirement:
   safe_withdrawal_rate: 0.04           # Source: Trinity Study / Bengen 4% rule
@@ -247,7 +247,7 @@ retirement:
   default_income_target: 30000         # Source: PLSA Retirement Living Standards (moderate)
 
 pension_annual_allowance:
-  standard: 60000                      # Source: HMRC 2025/26
+  standard: 60000                      # Source: HMRC 2026/27
   taper_threshold: 260000              # Source: HMRC — adjusted income threshold for taper
   taper_reduction_rate: 0.50           # Source: HMRC — £1 reduction per £2 over threshold
   minimum_allowance: 10000             # Source: HMRC — floor after taper
@@ -330,7 +330,7 @@ mortgage_costs:
   overpayment_scenarios: [100, 200, 500]
   rate_offset_from_stress: 0.02        # Source: Internal model
   dti_adjustment_cap_pct: 0.20         # Source: Internal model
-  first_time_buyer_threshold: 625000   # Source: HMRC 2025/26 FTB stamp duty relief cap
+  first_time_buyer_threshold: 625000   # Source: HMRC 2026/27 FTB stamp duty relief cap
   shared_ownership_deposit_pct: 0.10   # Source: Homes England minimum deposit on share
 
 scenarios:
@@ -402,24 +402,24 @@ compound_scenarios:
       nudge_category: "steady"
 
 self_employment:
-  # Source: HMRC 2025/26 Class 4 NI and Class 2 NI
+  # Source: HMRC 2026/27 Class 4 NI and Class 2 NI
   class4_main_rate: 0.09
   class4_additional_rate: 0.02
   class2_weekly_rate: 3.45
 
 # T2-2: Capital gains tax and dividend tax
 capital_gains_tax:
-  annual_exemption: 3000               # Source: HMRC 2025/26 (reduced from £6,000)
-  basic_rate: 0.10                     # Source: HMRC 2025/26
-  higher_rate: 0.20                    # Source: HMRC 2025/26
-  basic_rate_property: 0.18            # Source: HMRC 2025/26
-  higher_rate_property: 0.24           # Source: HMRC 2025/26
+  annual_exemption: 3000               # Source: HMRC 2026/27 (reduced from £6,000)
+  basic_rate: 0.10                     # Source: HMRC 2026/27
+  higher_rate: 0.20                    # Source: HMRC 2026/27
+  basic_rate_property: 0.18            # Source: HMRC 2026/27
+  higher_rate_property: 0.24           # Source: HMRC 2026/27
 
 dividend_tax:
-  allowance: 500                       # Source: HMRC 2025/26 (reduced from £1,000)
-  basic_rate: 0.0875                   # Source: HMRC 2025/26
-  higher_rate: 0.3375                  # Source: HMRC 2025/26
-  additional_rate: 0.3935              # Source: HMRC 2025/26
+  allowance: 500                       # Source: HMRC 2026/27 (reduced from £1,000)
+  basic_rate: 0.0875                   # Source: HMRC 2026/27
+  higher_rate: 0.3375                  # Source: HMRC 2026/27
+  additional_rate: 0.3935              # Source: HMRC 2026/27
 
 # T2-3: Insurance cost estimates (indicative, per £100k cover)
 insurance_cost_estimates:
