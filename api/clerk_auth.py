@@ -19,7 +19,13 @@ import jwt
 logger = logging.getLogger(__name__)
 
 _CLERK_SECRET_KEY = os.environ.get("CLERK_SECRET_KEY", "")
-_CLERK_PUBLISHABLE_KEY = os.environ.get("VITE_CLERK_PUBLISHABLE_KEY", "")
+# Backend prefers the un-prefixed name in root `.env`; falls back to the
+# Vite-prefixed name (used by the frontend in `web/.env.local`) for setups
+# where only one is provisioned.
+_CLERK_PUBLISHABLE_KEY = (
+    os.environ.get("CLERK_PUBLISHABLE_KEY", "")
+    or os.environ.get("VITE_CLERK_PUBLISHABLE_KEY", "")
+)
 
 # Derive the Clerk Frontend API domain from the publishable key.
 # pk_test_<base64-encoded-domain> -> decode to get e.g. "above-parakeet-10.clerk.accounts.dev$"
@@ -30,7 +36,11 @@ def _derive_frontend_api() -> str:
     global _CLERK_FRONTEND_API
     if _CLERK_FRONTEND_API:
         return _CLERK_FRONTEND_API
-    pk = _CLERK_PUBLISHABLE_KEY or os.environ.get("VITE_CLERK_PUBLISHABLE_KEY", "")
+    pk = (
+        _CLERK_PUBLISHABLE_KEY
+        or os.environ.get("CLERK_PUBLISHABLE_KEY", "")
+        or os.environ.get("VITE_CLERK_PUBLISHABLE_KEY", "")
+    )
     if not pk:
         return ""
     # Strip pk_test_ or pk_live_ prefix
